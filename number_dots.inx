@@ -5,24 +5,30 @@
     <param name="tab" type="notebook">
         <page name="Options" gui-text="Options">
             <param name="fontsize" type="string" gui-text="Font size:"
-            gui-description="Size of the node number labels (20px, 12pt...)">6px</param>
+                gui-description="Size of the node number labels (20px, 12pt...)">6px</param>
             <param name="dotsize" type="string" gui-text="Dot size:"
-            gui-description="Diameter of the dots placed at path nodes (10px, 2mm...)">10px</param>
+                gui-description="Diameter of the dots placed at path nodes (10px, 2mm...)">10px</param>
             <param name="start" type="int" min="0" max="1000" gui-text="Starting dot number:"
-            gui-description="First number in the sequence, assigned to the first node of the path.">1</param>            
+                gui-description="First number in the sequence, assigned to the first node of the path.">1</param>
+            <param name="precision" type="int" min="0" max="10" gui-text="Precision:"
+                gui-description="Rounding factor for X- and Y-coordinates">1</param>
+            <param name="reference_sequence" type="boolean" gui-text="Save reference sequence"
+                gui-description="
+                    If checked, the sequence of numbers assigned to the nodes will be saved in a JSON file.">true</param>
+                
         </page>
         <page name="Help" gui-text="Help">
             <label xml:space="preserve">This extension replaces the paths in the selection with numbered dots in place of their nodes.</label>
         </page>
-    </param>        
+    </param>
 
     <effect>
-        <!-- <object-type>path</object-type> -->
-                <effects-menu>
-                    <submenu name="Generate numbered dots"/>
-                </effects-menu>
+        <effects-menu>
+            <submenu name="Generate numbered dots"/>
+        </effects-menu>
     </effect>
     <script>
+        <!-- Pass the selected parameters to your Python script -->
         <command location="inx" interpreter="python">number_dots_extension.py</command>
     </script>
 </inkscape-extension>

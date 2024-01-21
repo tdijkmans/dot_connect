@@ -2,13 +2,28 @@
 import math
 
 import inkex
-from inkex import Circle, TextElement
+from inkex import (
+    AbortExtension,
+    Circle,
+    EffectExtension,
+    Group,
+    Layer,
+    PathElement,
+    Rectangle,
+    Style,
+    TextElement,
+    Tspan,
+)
 from inkex.localization import inkex_gettext as _
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
-class NumberDots(inkex.EffectExtension):
+class NumberDots(EffectExtension):
     """Replace the selection's nodes with numbered dots according to the options"""
+
+    coding_sequence = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    fontsize = ""
+    text_layer: Layer = None
 
     # Define method to add command-line arguments for the extension
     def add_arguments(self, pars):
@@ -20,33 +35,123 @@ class NumberDots(inkex.EffectExtension):
             "--start", type=int, default=1, help="First number in the sequence"
         )
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
+        pars.add_argument(
+            "--precision",
+            type=int,
+            default=1,
+            help="Precision for coordinates; higher value represents lower resolution",
+        )
+        pars.add_argument(
+            "--reference_sequence",
+            type=bool,
+            default=False,
+            help="Print reference sequence",
+        )
 
     # Define the main effect method
     def effect(self):
         # Filter selected elements to only include PathElements
-        filtered = self.svg.selection.filter(inkex.PathElement)
+        filtered = self.svg.selection.filter(PathElement)
         if not filtered:
-            raise inkex.AbortExtension(_("Please select at least one path object."))
+            raise AbortExtension(_("Please select at least one path object."))
 
-        unique_mapping = self.create_mapping(filtered)
-        self.write_mapping_to_file(unique_mapping, "mapping.json")
-        self.plot_mapping(unique_mapping)
-        self.plot_letter_sequence(unique_mapping)
-        self.print_stats(unique_mapping)
+        # Get the fontsize from the options
+        self.fontsize = self.svg.unittouu(self.options.fontsize)
+
+        puzzle_dots_layer = self.svg.add(Layer())
+        puzzle_dots_layer.set("id", "puzzle_dots")
+        text_layer = self.svg.add(Layer())
+        text_layer.set("id", "text_layer")
+
+        # Plot squares in approximate centers of filled elements
+        # self.plot_filled_elements()
+
+        dot_connections = self.create_mapping(filtered)
+        self.plot_puzzle(dot_connections)
+        sequence = self.plot_letter_sequence(dot_connections)
+        text_layer.append(sequence)
+        compact_mapping = self.compress_mapping(dot_connections)
+        compact_sequence = self.plot_compact_mapping(compact_mapping)
+        text_layer.append(compact_sequence)
+
+        self.write_mapping_to_file(dot_connections, "connections.json")
+        self.write_mapping_to_file(compact_mapping, "compact_mapping.json")
+        self.print_stats(dot_connections)
+        # if self.options.reference_sequence:
+        #     self.createReferenceSequence()
 
         for node in filtered:
             node.set("id", "source_path")
 
+    def plot_filled_elements(self):
+        xpath_query = ".//*[@style and contains(@style, 'fill')]"
+        matched_elements = self.svg.xpath(xpath_query)
+        for element in matched_elements:
+            element.set("id", f"matched_element_{element.get('id')}")
+            bbox = inkex.PathElement(element).bounding_box()
+
     def createRootGroup(self, id: str):
-        root_group: inkex.Group = self.svg.add(inkex.Group())
+        root_group: Group = self.svg.add(Group())
         root_group.set("id", id)
         root_group.transform = "translate(0, 0)"
         return root_group
 
+    def createReferenceSequence(self):
+        """Create a reference sequence of the letters"""
+        reference_sequence_group = self.createRootGroup("reference_sequence")
+
+        # Calculate the maximum number based on the length of coding_sequence
+        max_number = len(self.coding_sequence) ** 2
+
+        # Create a rectangle element
+        rect = Rectangle(
+            x="50",
+            y="50",
+            width="698",
+            height="113",
+            id="reference_sequence_rect",
+        )
+
+        # Add the rectangle to the <defs> section
+        self.svg.defs.append(rect)
+
+        # Create a text element inside the rectangle
+        text_element = TextElement(x="50", y="50", id="reference_sequence_textbox")
+        text_element.set("shape-inside", f"url(#{rect.get('id')})")
+
+        text_element.style = {
+            "font-size": self.fontsize,
+            "font-family": "Consolas",
+            "fill-opacity": "1.0",
+            "font-style": "normal",
+            "fill": "#000000",
+        }
+
+        # Add the text element to the document
+        reference_sequence_group.append(text_element)
+
+        # Add the reference sequence
+        reference_sequence = ""
+        for i in range(1, max_number + 1):
+            reference_sequence += self.get_letter_id_from_number(i) + " "
+
+        reference_sequence_group.append(
+            self.add_text_in_rect(
+                49,
+                50,
+                698,
+                113,
+                reference_sequence,
+                "reference_sequence_textbox",
+                "reference_sequence_rect",
+                "#000000",  # Black
+            )
+        )
+
+        return reference_sequence
+
     def print_stats(self, mapping: list):
         """Print statistics about the mapping"""
-        puzzle_stats_group = self.createRootGroup("puzzle_stats")
-
         unique_dots = []
 
         for entry in mapping:
@@ -70,43 +175,27 @@ class NumberDots(inkex.EffectExtension):
                 unique_dots.append({"x": x, "y": y, "letter_label": letter_label})
 
         total_num_dots = len(unique_dots)
-        puzzle_stats_group.append(
+        self.svg.getElementById("text_layer").append(
             self.add_text(
                 50,
-                280,
-                f"Total number of dots: {total_num_dots}",
+                1053,
+                f"{len(mapping)} connections ({total_num_dots} dots)",
                 "total_num_dots",
             )
         )
 
-        total_num_lines = len(mapping)
-        puzzle_stats_group.append(
-            self.add_text(
-                50,
-                290,
-                f"Total number of lines to draw: {total_num_lines}",
-                "total_num_lines",
-            )
-        )
-
-    def plot_mapping(self, mapping: list):
+    def plot_puzzle(self, mapping: list):
         """Plot the mapping to the canvas"""
         # Calculate the radius of the dots based on dotsize
         radius = self.svg.unittouu(self.options.dotsize) / 2
-        mapping_table_group = self.createRootGroup("mapping_table")
 
         unique_dots = []
-
-        letter_group = mapping_table_group.add(inkex.Group())
-        letter_group.set("id", "letter_group")
-        circle_group = mapping_table_group.add(inkex.Group())
-        circle_group.set("id", "circle_group")
 
         # Remove duplicate dots
         for entry in mapping:
             x = entry["x"]
             y = entry["y"]
-            letter_label = entry["letter_label"]
+            letter_element = entry["letter_label"]
 
             # Check if the dot is already in unique_dots
             exists = False
@@ -114,100 +203,150 @@ class NumberDots(inkex.EffectExtension):
                 if (
                     dot["x"] == x
                     and dot["y"] == y
-                    and dot["letter_label"] == letter_label
+                    and dot["letter_label"] == letter_element
                 ):
                     exists = True
                     break
 
             # If it's not in unique_dots, add it
             if not exists:
-                unique_dots.append({"x": x, "y": y, "letter_label": letter_label})
+                unique_dots.append({"x": x, "y": y, "letter_label": letter_element})
 
         for step in unique_dots:
-            letter_label = self.add_text(
-                step["x"],
-                step["y"],
-                step["letter_label"],
-                f"letter_{step['letter_label']}",
-                "#ffffff",
+            x_center = step["x"]  # Center of the circle
+            y_center = step["y"]
+
+            first_letter = step["letter_label"][0]
+            second_letter = step["letter_label"][1]
+
+            first_letter_label = self.add_text(
+                x_center - 4,
+                y_center + self.fontsize / 4,  # Adjust Y for centering
+                first_letter,
+                f"01_{first_letter} of {step['letter_label']}",
+                "#000000",  # Black
             )
 
-            circle: inkex.Circle = Circle(
-                cx=str(step["x"]),
-                cy=str(step["y"]),
-                r=str(radius),
+            second_letter_label = self.add_text(
+                x_center + 1,
+                y_center + self.fontsize / 4,  # Adjust Y for centering
+                second_letter,
+                f"02_{second_letter} of {step['letter_label']}",
+                "#000000",  # Black
             )
-            circle.set("id", f"circle_{step['letter_label']}")
 
-            circle_group.append(circle)
-            letter_group.append(letter_label)
+            white_circle = self.createCircle(
+                x_center,
+                y_center,
+                4,
+                fill="#ffffff",
+                id=f"white_dot_{step['letter_label']}",
+            )
+
+            black_circle = self.createCircle(
+                x_center,
+                y_center,
+                0.5,
+                fill="#000000",
+                id=f"black_dot_{step['letter_label']}",
+            )
+
+            current_dot_group = self.svg.getElementById("puzzle_dots").add(Group())
+            current_dot_group.set("id", f"{step['letter_label']}")
+            # current_dot_group.append(white_circle)
+            current_dot_group.append(black_circle)
+            current_dot_group.append(first_letter_label)
+            current_dot_group.append(second_letter_label)
+
+    def createCircle(self, x: int, y: int, radius: int, fill="#ffffff", id=""):
+        """Create a circle element"""
+        circle = Circle(cx=str(x), cy=str(y), r=str(radius))
+        circle.style = Style(
+            {
+                "fill": fill,
+            }
+        )
+        circle.set("id", id)
+        return circle
 
     def plot_letter_sequence(self, mapping: list):
         """Plot the mapping to the canvas"""
-        sequence_table_group = self.createRootGroup("letter_sequence_table")
-        letter_sequence_group = sequence_table_group.add(inkex.Group())
-        letter_sequence_group.set("id", "letter_sequence_group")
-        dot_sequence_group = sequence_table_group.add(inkex.Group())
-        dot_sequence_group.set("id", "dot_sequence_group")
-
         sequence_string = ""
-        x_offset = 50
-        y_offset = 200
+        y_pos = 929
+        if len(mapping) < 500:
+            y_pos = 929 + 50
 
         for item in mapping:
-            letter_sequence_group.append(
-                self.add_text(
-                    item["dot_number"] * self.svg.unittouu(self.options.fontsize) * 2
-                    + x_offset,
-                    50 + y_offset,
-                    item["letter_label"],
-                    f"seq_{item['dot_number']}",
-                )
-            )
-            dot_sequence_group.append(
-                self.add_text(
-                    item["dot_number"] * self.svg.unittouu(self.options.fontsize) * 2
-                    + x_offset,
-                    60 + y_offset,
-                    item["dot_number"],
-                    f"step_{item['dot_number']}",
-                )
-            )
             sequence_string += f"{item['letter_label']}" + " "
 
-        sequence_table_group.append(
-            self.add_text(
-                0 + x_offset,
-                70 + y_offset,
-                sequence_string[:-3],
-                "sequence_string",
-            )
+        return self.add_text_in_rect(
+            49,
+            y_pos,
+            698,
+            113,
+            sequence_string,
+            "sequence_string_textbox",
+            "sequence_string_rect",
+            "#000000",  # Black
+        )
+
+    def plot_compact_mapping(self, mapping: list):
+        """Plot the mapping to the canvas"""
+        sequence_string = ""
+        x_pos = 49
+        y_pos = 80
+        width = 698
+        height = 113
+
+        for item in mapping:
+            sequence_string += f"{item}" + " "
+
+        return self.add_text_in_rect(
+            x_pos,
+            y_pos,
+            width,
+            height,
+            sequence_string,
+            "compact_sequence_string_textbox",
+            "compact_sequence_string_rect",
+            "#000000",  # Black
         )
 
     def create_mapping(self, nodes: list):
         """Create a mapping of letter IDs, numbers, and coordinates"""
         result_mapping = []
         coord_to_label = {}  # Dictionary for efficient coordinate lookup
+        dot_number = self.options.start - 1
+
+        # Get the precision factor from the options
+        precision = self.options.precision
 
         for node in nodes:
             path_trans_applied = node.path.transform(node.composed_transform())
 
-            for step, (x, y) in enumerate(path_trans_applied.end_points):
-                dot_number = self.options.start + step
-                coord_key = (x, y)  # Create a tuple key for the coordinates
+            for _, (x, y) in enumerate(path_trans_applied.end_points):
+                dot_number += 1
 
-                if coord_key in coord_to_label:
+                # Round the coordinates using the specified precision factor
+                x_rounded = round(x / precision) * precision
+                y_rounded = round(y / precision) * precision
+                rounded_coords = (x_rounded, y_rounded)
+
+                if rounded_coords in coord_to_label:
                     # Coordinate already exists, use the same label
-                    letter_label = coord_to_label[coord_key]
+                    letter_label = coord_to_label[rounded_coords]
                 else:
                     # New coordinate, generate a new label and store it
-                    letter_label = self.get_letter_id_from_number(dot_number)
-                    coord_to_label[coord_key] = letter_label
+                    next_unique_dot_number = len(coord_to_label) + 1
+                    letter_label = self.get_letter_id_from_number(
+                        next_unique_dot_number
+                    )
+                    coord_to_label[rounded_coords] = letter_label
 
                 result_mapping.append(
                     {
-                        "x": x,
-                        "y": y,
+                        "x": x_rounded,
+                        "y": y_rounded,
                         "dot_number": dot_number,
                         "letter_label": letter_label,
                     }
@@ -215,33 +354,40 @@ class NumberDots(inkex.EffectExtension):
 
         return result_mapping
 
+    def compress_mapping(self, dot_connections: list):
+        """Compress the mapping by filtering out dot numbers of which letters are already in the sequence; return a list of dot connections like: "Am" -> "AA" """
+
+        compressed_mapping = []
+
+        for i in range(
+            1, len(dot_connections)
+        ):  # Start from 1 to avoid negative indexing
+            current_dot_label = dot_connections[i]["letter_label"]
+            for j in range(i):
+                previous_dot_label = dot_connections[j]["letter_label"]
+                if current_dot_label == previous_dot_label:
+                    # If the current dot label is the same as a previous dot label, add the mapping
+                    compressed_mapping.append(
+                        f"{dot_connections[i-1]['letter_label']}:{current_dot_label}"
+                    )
+                    break  # Stop the inner loop once a match is found
+
+        return compressed_mapping
+
     def write_mapping_to_file(self, mapping, filename):
         """Write the mapping to a file"""
         with open(filename, "w") as f:
             f.write(str(mapping))
 
     # Define a method to set the style of dots based on their position
-    def set_dot_style(self, circle, total_num_dots: int, dot_number: int):
-        dot_style = inkex.Style(
+    def set_dot_style(self, circle, dot_number: int):
+        circle.style = Style(
             {
                 "stroke": "#ffffff",
-                "stroke-width": "0.1pt",
-                "fill": "#000000",
-            }
-        )
-
-        dot_style_start_end = inkex.Style(
-            {
-                "stroke": "#000000",
                 "stroke-width": "0.1pt",
                 "fill": "#ffffff",
             }
         )
-
-        if dot_number == 1 or dot_number == total_num_dots:
-            circle.style = dot_style_start_end
-        else:
-            circle.style = dot_style
         circle.set("id", f"dot_{dot_number}")
         return circle
 
@@ -255,22 +401,76 @@ class NumberDots(inkex.EffectExtension):
         elem.text = str(text)
         elem.set("id", id)
         elem.style = {
-            "font-size": self.svg.unittouu(self.options.fontsize),
-            "font-family": "Arial",
+            "font-size": self.fontsize,
+            "font-family": "Consolas",
             "fill-opacity": "1.0",
-            "font-weight": "bold",
             "font-style": "normal",
             "fill": color,
         }
         return elem
 
+    def add_text_in_rect(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        text_string: str,
+        text_id: str,
+        rect_id: str,
+        color: str = "#000",
+    ):
+        """Add a text element inside a rectangle at the given location with specified properties"""
+
+        # Create a rectangle element
+        rect = Rectangle(
+            x=str(x), y=str(y), width=str(width), height=str(height), id=rect_id
+        )
+
+        # Add the rectangle to the <defs> section
+        self.svg.defs.append(rect)
+
+        # Create a text element inside the rectangle
+        text_element = TextElement(x=str(x), y=str(y), id=text_id)
+        text_element.set(
+            "shape-inside", f"url(#{rect_id})"
+        )  # Reference the rectangle as the shape inside the text
+        text_element.style = {
+            "font-size": self.fontsize,
+            "font-family": "Consolas",
+            "fill-opacity": "1.0",
+            "font-style": "normal",
+            "fill": color,
+        }
+        tspan = Tspan(text_string)
+        tspan.text = text_string
+        text_element.append(tspan)
+
+        # Add the text element to the document
+        self.svg.append(text_element)
+
+        return text_element
+
     # Define a method to generate letter IDs
     # The max number of dots can be 2074 (52*52)
     def get_letter_id_from_number(self, number):
         """Generate letter IDs from 1 to 2074"""
-        letter_id_array = [
-            letter for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        ]
+
+        # Validate coding_sequence
+        if not self.coding_sequence or len(self.coding_sequence) < 2:
+            raise ValueError(
+                "Invalid coding_sequence. It should contain at least two characters."
+            )
+
+        # Calculate the maximum number based on the length of coding_sequence
+        max_number = len(self.coding_sequence) ** 2
+
+        if not 1 <= number <= max_number:
+            raise ValueError(
+                f"Number {number} is out of range. Should be between 1 and {max_number}."
+            )
+
+        letter_id_array = [letter for letter in self.coding_sequence]
 
         first_letter_index = (number - 1) // len(letter_id_array)
         second_letter_index = (number - 1) % len(letter_id_array)
@@ -282,9 +482,7 @@ class NumberDots(inkex.EffectExtension):
 
     def get_number_from_letter_id(self, letter_id):
         """Retrieve the number from letter IDs"""
-        letter_id_array = [
-            letter for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        ]
+        letter_id_array = [letter for letter in self.coding_sequence]
 
         first_letter_index = letter_id_array.index(letter_id[0])
         second_letter_index = letter_id_array.index(letter_id[1])
