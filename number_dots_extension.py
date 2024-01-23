@@ -58,13 +58,15 @@ class NumberDots(EffectExtension):
         # Get the fontsize from the options
         self.fontsize = self.svg.unittouu(self.options.fontsize)
 
+        puzzle_planes_layer = self.svg.add(Layer())
+        puzzle_planes_layer.set("id", "puzzle_planes")
         puzzle_dots_layer = self.svg.add(Layer())
         puzzle_dots_layer.set("id", "puzzle_dots")
         text_layer = self.svg.add(Layer())
         text_layer.set("id", "text_layer")
 
         # Plot squares in approximate centers of filled elements
-        # self.plot_filled_elements()
+        self.plot_filled_elements()
 
         dot_connections = self.create_mapping(filtered)
         self.plot_puzzle(dot_connections)
@@ -83,12 +85,26 @@ class NumberDots(EffectExtension):
         for node in filtered:
             node.set("id", "source_path")
 
-    def plot_filled_elements(self):
-        xpath_query = ".//*[@style and contains(@style, 'fill')]"
+    def plot_filled_elements(self, target_fill="#ff0000"):
+        xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
         matched_elements = self.svg.xpath(xpath_query)
-        for element in matched_elements:
-            element.set("id", f"matched_element_{element.get('id')}")
-            bbox = inkex.PathElement(element).bounding_box()
+
+        for index, element in enumerate(matched_elements):
+            id = index + 1
+            element.set("id", f"matched_plane_{id}")
+            path = element.path.transform(element.composed_transform())
+            bbox = path.bounding_box()
+            x, y = bbox.center
+            circle = self.createCircle(x, y, 4, fill="#000000", id=f"puzzle_plane_{id}")
+            circle.style = Style(
+                {
+                    "stroke": "#000000",
+                    "stroke-width": "0.5pt",
+                    "fill": "#ffffff",  # White
+                }
+            )
+
+            self.svg.getElementById("puzzle_planes").append(circle)
 
     def createRootGroup(self, id: str):
         root_group: Group = self.svg.add(Group())
