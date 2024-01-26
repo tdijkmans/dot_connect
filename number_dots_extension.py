@@ -1,7 +1,6 @@
 # Import required modules
 import math
 
-import inkex
 from inkex import (
     AbortExtension,
     Circle,
@@ -41,18 +40,47 @@ class NumberDots(EffectExtension):
             default=1,
             help="Precision for coordinates; higher value represents lower resolution",
         )
+
         pars.add_argument(
-            "--reference_sequence",
+            "--plot_centroids",
             type=bool,
+            help="Plot centroids of filled elements",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--plot_dots",
+            type=bool,
+            help="Plot dots",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--plot_sequence",
+            type=bool,
+            help="Plot sequence",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--plot_compact_sequence",
+            type=bool,
+            help="Plot compact sequence",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--plot_reference_sequence",
+            type=bool,
+            help="Plot reference sequence",
             default=False,
-            help="Print reference sequence",
         )
 
     # Define the main effect method
     def effect(self):
         # Filter selected elements to only include PathElements
-        filtered = self.svg.selection.filter(PathElement)
-        if not filtered:
+        selected_path = self.svg.selection.filter(PathElement)
+        if not selected_path:
             raise AbortExtension(_("Please select at least one path object."))
 
         # Get the fontsize from the options
@@ -65,46 +93,74 @@ class NumberDots(EffectExtension):
         text_layer = self.svg.add(Layer())
         text_layer.set("id", "text_layer")
 
-        # Plot squares in approximate centers of filled elements
-        self.plot_filled_elements()
+        # Plot centroids in filled elements
+        if self.options.plot_centroids:
+            self.plot_puzzle_centroids()
 
-        dot_connections = self.create_mapping(filtered)
-        self.plot_puzzle(dot_connections)
-        sequence = self.plot_letter_sequence(dot_connections)
-        text_layer.append(sequence)
+        dot_connections = self.create_mapping(selected_path)
+
+        if self.options.plot_dots:
+            self.plot_puzzle_dots(dot_connections)
+
+        if self.options.plot_sequence:
+            sequence = self.plot_letter_sequence(dot_connections)
+            text_layer.append(sequence)
         compact_mapping = self.compress_mapping(dot_connections)
-        compact_sequence = self.plot_compact_mapping(compact_mapping)
-        text_layer.append(compact_sequence)
+        if self.options.plot_compact_sequence:
+            compact_sequence = self.plot_compact_mapping(compact_mapping)
+            text_layer.append(compact_sequence)
 
         self.write_mapping_to_file(dot_connections, "connections.json")
         self.write_mapping_to_file(compact_mapping, "compact_mapping.json")
         self.print_stats(dot_connections)
-        # if self.options.reference_sequence:
-        #     self.createReferenceSequence()
 
-        for node in filtered:
-            node.set("id", "source_path")
+        if self.options.plot_reference_sequence:
+            self.createReferenceSequence()
 
-    def plot_filled_elements(self, target_fill="#ff0000"):
-        xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
-        matched_elements = self.svg.xpath(xpath_query)
-
-        for index, element in enumerate(matched_elements):
-            id = index + 1
-            element.set("id", f"matched_plane_{id}")
-            path = element.path.transform(element.composed_transform())
-            bbox = path.bounding_box()
-            x, y = bbox.center
-            circle = self.createCircle(x, y, 4, fill="#000000", id=f"puzzle_plane_{id}")
-            circle.style = Style(
+        for puzzle_path in selected_path:
+            puzzle_path.set("id", "source_path")
+            puzzle_path.style = Style(
                 {
                     "stroke": "#000000",
-                    "stroke-width": "0.5pt",
-                    "fill": "#ffffff",  # White
+                    "stroke-width": "0.1pt",
+                    "fill": "none",
                 }
             )
 
-            self.svg.getElementById("puzzle_planes").append(circle)
+    def plot_puzzle_centroids(self, target_fill="#ff0000"):
+        xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
+        red_planes = self.svg.xpath(xpath_query)
+
+        for index, plane in enumerate(red_planes):
+            endpoints = plane.path.transform(plane.composed_transform()).end_points
+
+            x_coords = []
+            y_coords = []
+
+            for _, (x, y) in enumerate(endpoints):
+                x_coords.append(x)
+                y_coords.append(y)
+
+                centroid_x = sum(x_coords) / len(x_coords)
+                centroid_y = sum(y_coords) / len(y_coords)
+
+            id = index + 1
+
+            text_element = self.add_text(
+                centroid_x - 4,
+                centroid_y + self.fontsize / 4,  # Adjust Y for centering
+                "*",
+                f"plane_centroid_label_{id}",
+                "#000000",  # Black
+            )
+            self.svg.getElementById("puzzle_planes").append(text_element)
+            plane.set("id", f"source_plane_{id}")
+            plane.style = Style(
+                {
+                    "stroke": None,
+                    "fill": "#d3d3d3",
+                }
+            )
 
     def createRootGroup(self, id: str):
         root_group: Group = self.svg.add(Group())
@@ -200,11 +256,8 @@ class NumberDots(EffectExtension):
             )
         )
 
-    def plot_puzzle(self, mapping: list):
+    def plot_puzzle_dots(self, mapping: list):
         """Plot the mapping to the canvas"""
-        # Calculate the radius of the dots based on dotsize
-        radius = self.svg.unittouu(self.options.dotsize) / 2
-
         unique_dots = []
 
         # Remove duplicate dots
@@ -251,14 +304,6 @@ class NumberDots(EffectExtension):
                 "#000000",  # Black
             )
 
-            white_circle = self.createCircle(
-                x_center,
-                y_center,
-                4,
-                fill="#ffffff",
-                id=f"white_dot_{step['letter_label']}",
-            )
-
             black_circle = self.createCircle(
                 x_center,
                 y_center,
@@ -269,7 +314,6 @@ class NumberDots(EffectExtension):
 
             current_dot_group = self.svg.getElementById("puzzle_dots").add(Group())
             current_dot_group.set("id", f"{step['letter_label']}")
-            # current_dot_group.append(white_circle)
             current_dot_group.append(black_circle)
             current_dot_group.append(first_letter_label)
             current_dot_group.append(second_letter_label)
