@@ -3,6 +3,7 @@ import math
 
 from inkex import (
     AbortExtension,
+    Boolean,
     Circle,
     EffectExtension,
     Group,
@@ -26,9 +27,6 @@ class NumberDots(EffectExtension):
 
     # Define method to add command-line arguments for the extension
     def add_arguments(self, pars):
-        pars.add_argument(
-            "--dotsize", default="10px", help="Size of the dots on the path nodes"
-        )
         pars.add_argument("--fontsize", default="6px", help="Size of node labels")
         pars.add_argument(
             "--start", type=int, default=1, help="First number in the sequence"
@@ -43,48 +41,49 @@ class NumberDots(EffectExtension):
 
         pars.add_argument(
             "--plot_centroids",
-            type=bool,
+            type=Boolean,
             help="Plot centroids of filled elements",
             default=True,
         )
 
         pars.add_argument(
             "--plot_dots",
-            type=bool,
+            type=Boolean,
             help="Plot dots",
             default=True,
         )
 
         pars.add_argument(
             "--plot_sequence",
-            type=bool,
+            type=Boolean,
             help="Plot sequence",
             default=True,
         )
 
         pars.add_argument(
             "--plot_compact_sequence",
-            type=bool,
+            type=Boolean,
             help="Plot compact sequence",
             default=True,
         )
 
         pars.add_argument(
             "--plot_reference_sequence",
-            type=bool,
+            type=Boolean,
             help="Plot reference sequence",
             default=False,
         )
 
     # Define the main effect method
     def effect(self):
+        so = self.options  # shorthand for self.options
         # Filter selected elements to only include PathElements
         selected_path = self.svg.selection.filter(PathElement)
         if not selected_path:
             raise AbortExtension(_("Please select at least one path object."))
 
         # Get the fontsize from the options
-        self.fontsize = self.svg.unittouu(self.options.fontsize)
+        self.fontsize = self.svg.unittouu(so.fontsize)
 
         puzzle_planes_layer = self.svg.add(Layer())
         puzzle_planes_layer.set("id", "puzzle_planes")
@@ -94,19 +93,19 @@ class NumberDots(EffectExtension):
         text_layer.set("id", "text_layer")
 
         # Plot centroids in filled elements
-        if self.options.plot_centroids:
+        if so.plot_centroids:
             self.plot_puzzle_centroids()
 
         dot_connections = self.create_mapping(selected_path)
 
-        if self.options.plot_dots:
+        if so.plot_dots:
             self.plot_puzzle_dots(dot_connections)
 
-        if self.options.plot_sequence:
+        if so.plot_sequence:
             sequence = self.plot_letter_sequence(dot_connections)
             text_layer.append(sequence)
         compact_mapping = self.compress_mapping(dot_connections)
-        if self.options.plot_compact_sequence:
+        if so.plot_compact_sequence:
             compact_sequence = self.plot_compact_mapping(compact_mapping)
             text_layer.append(compact_sequence)
 
@@ -114,7 +113,7 @@ class NumberDots(EffectExtension):
         self.write_mapping_to_file(compact_mapping, "compact_mapping.json")
         self.print_stats(dot_connections)
 
-        if self.options.plot_reference_sequence:
+        if so.plot_reference_sequence:
             self.createReferenceSequence()
 
         for puzzle_path in selected_path:
@@ -333,6 +332,10 @@ class NumberDots(EffectExtension):
         """Plot the mapping to the canvas"""
         sequence_string = ""
         y_pos = 929
+        x_pos = 49
+        width = 698
+        height = 113
+
         if len(mapping) < 500:
             y_pos = 929 + 50
 
@@ -340,10 +343,10 @@ class NumberDots(EffectExtension):
             sequence_string += f"{item['letter_label']}" + " "
 
         return self.add_text_in_rect(
-            49,
+            x_pos,
             y_pos,
-            698,
-            113,
+            width,
+            height,
             sequence_string,
             "sequence_string_textbox",
             "sequence_string_rect",
@@ -357,6 +360,9 @@ class NumberDots(EffectExtension):
         y_pos = 80
         width = 698
         height = 113
+
+        if len(mapping) < 500:
+            y_pos = 929 + 50
 
         for item in mapping:
             sequence_string += f"{item}" + " "
