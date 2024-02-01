@@ -6,6 +6,10 @@
         <page name="Options" gui-text="Options">
             <param name="fontsize" type="string" gui-text="Font size:"
                 gui-description="Size of the node number labels (20px, 12pt...)">6px</param>
+            <param name="fontweight" type="optiongroup" gui-text="Font weight:" appearance="combo" gui-description="Weight of the node number labels">
+                <option value="bold" gui-text="Bold">Bold</option>
+                <option value="normal" gui-text="Normal">Normal</option>
+            </param>
             <param name="start" type="int" min="0" max="1000" gui-text="Starting dot number:"
                 gui-description="First number in the sequence, assigned to the first node of the path.">1</param>
             <param name="precision" type="int" min="0" max="10" gui-text="Precision:"
