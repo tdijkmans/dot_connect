@@ -21,13 +21,24 @@ from inkex.localization import inkex_gettext as _
 class NumberDots(EffectExtension):
     """Replace the selection's nodes with numbered dots according to the options"""
 
-    coding_sequence = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    coding_sequence = (
+        "abcdefghijklmnopqrstuvwxyz" + "1234567890" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    )
     fontsize = ""
     text_layer: Layer = None
 
+    fontStyle = Style(
+        {
+            "font-family": "Consolas",
+            "fill-opacity": "1.0",
+            "fill": "#000000",
+        }
+    )
+
     # Define method to add command-line arguments for the extension
     def add_arguments(self, pars):
-        pars.add_argument("--fontsize", default="6px", help="Size of node labels")
+        pars.add_argument("--fontsize", default="8px", help="Size of node labels")
+        pars.add_argument("--fontweight", default="bold", help="Weight of node labels")
         pars.add_argument(
             "--start", type=int, default=1, help="First number in the sequence"
         )
@@ -64,7 +75,7 @@ class NumberDots(EffectExtension):
             "--plot_compact_sequence",
             type=Boolean,
             help="Plot compact sequence",
-            default=True,
+            default=False,
         )
 
         pars.add_argument(
@@ -77,13 +88,15 @@ class NumberDots(EffectExtension):
     # Define the main effect method
     def effect(self):
         so = self.options  # shorthand for self.options
+        self.fontStyle = self.fontStyle
+        self.fontStyle["font-weight"] = so.fontweight
+        self.fontStyle["font-size"] = self.svg.unittouu(so.fontsize)
+        self.fontsize = self.svg.unittouu(so.fontsize)
+
         # Filter selected elements to only include PathElements
         selected_path = self.svg.selection.filter(PathElement)
         if not selected_path:
             raise AbortExtension(_("Please select at least one path object."))
-
-        # Get the fontsize from the options
-        self.fontsize = self.svg.unittouu(so.fontsize)
 
         puzzle_planes_layer = self.svg.add(Layer())
         puzzle_planes_layer.set("id", "puzzle_planes")
@@ -190,13 +203,8 @@ class NumberDots(EffectExtension):
         text_element = TextElement(x="50", y="50", id="reference_sequence_textbox")
         text_element.set("shape-inside", f"url(#{rect.get('id')})")
 
-        text_element.style = {
-            "font-size": self.fontsize,
-            "font-family": "Consolas",
-            "fill-opacity": "1.0",
-            "font-style": "normal",
-            "fill": "#000000",
-        }
+        text_element.style = self.fontStyle
+        text_element.style["fill"] = "#000000"
 
         # Add the text element to the document
         reference_sequence_group.append(text_element)
@@ -284,29 +292,21 @@ class NumberDots(EffectExtension):
             x_center = step["x"]  # Center of the circle
             y_center = step["y"]
 
-            first_letter = step["letter_label"][0]
-            second_letter = step["letter_label"][1]
-
-            first_letter_label = self.add_text(
-                x_center - 4,
-                y_center + self.fontsize / 4,  # Adjust Y for centering
-                first_letter,
-                f"01_{first_letter} of {step['letter_label']}",
-                "#000000",  # Black
+            text_element_with_label = self.svg.getElementById("text_layer").add(
+                TextElement(x=str(x_center), y=str(y_center))
             )
-
-            second_letter_label = self.add_text(
-                x_center + 1,
-                y_center + self.fontsize / 4,  # Adjust Y for centering
-                second_letter,
-                f"02_{second_letter} of {step['letter_label']}",
-                "#000000",  # Black
-            )
+            # make the text center horitzontally
+            text_element_with_label.text = f"{step['letter_label']}"
+            text_element_with_label.set("text-anchor", "middle")
+            text_element_with_label.set("dominant-baseline", "middle")
+            text_element_with_label.set("id", f"text_label_{step['letter_label']}")
+            text_element_with_label.style = self.fontStyle
+            text_element_with_label.set("letter-spacing", "1px")
 
             black_circle = self.createCircle(
                 x_center,
                 y_center,
-                0.5,
+                0.7,
                 fill="#000000",
                 id=f"black_dot_{step['letter_label']}",
             )
@@ -314,8 +314,7 @@ class NumberDots(EffectExtension):
             current_dot_group = self.svg.getElementById("puzzle_dots").add(Group())
             current_dot_group.set("id", f"{step['letter_label']}")
             current_dot_group.append(black_circle)
-            current_dot_group.append(first_letter_label)
-            current_dot_group.append(second_letter_label)
+            current_dot_group.append(text_element_with_label)
 
     def createCircle(self, x: int, y: int, radius: int, fill="#ffffff", id=""):
         """Create a circle element"""
@@ -333,14 +332,17 @@ class NumberDots(EffectExtension):
         sequence_string = ""
         y_pos = 929
         x_pos = 49
-        width = 698
+        width = 677
         height = 113
 
         if len(mapping) < 500:
             y_pos = 929 + 50
 
-        for item in mapping:
-            sequence_string += f"{item['letter_label']}" + " "
+        for index, item in enumerate(mapping):
+            if (index + 1) % 5 == 0 and index != 0:
+                sequence_string += f"{item['letter_label']}" + " " + " "
+            else:
+                sequence_string += f"{item['letter_label']}" + " "
 
         return self.add_text_in_rect(
             x_pos,
@@ -358,7 +360,7 @@ class NumberDots(EffectExtension):
         sequence_string = ""
         x_pos = 49
         y_pos = 80
-        width = 698
+        width = 677
         height = 113
 
         if len(mapping) < 500:
@@ -466,13 +468,8 @@ class NumberDots(EffectExtension):
         elem = TextElement(x=str(x), y=str(y))
         elem.text = str(text)
         elem.set("id", id)
-        elem.style = {
-            "font-size": self.fontsize,
-            "font-family": "Consolas",
-            "fill-opacity": "1.0",
-            "font-style": "normal",
-            "fill": color,
-        }
+        elem.style = self.fontStyle
+        elem.style["fill"] = color
         return elem
 
     def add_text_in_rect(
@@ -501,13 +498,8 @@ class NumberDots(EffectExtension):
         text_element.set(
             "shape-inside", f"url(#{rect_id})"
         )  # Reference the rectangle as the shape inside the text
-        text_element.style = {
-            "font-size": self.fontsize,
-            "font-family": "Consolas",
-            "fill-opacity": "1.0",
-            "font-style": "normal",
-            "fill": color,
-        }
+        text_element.style = self.fontStyle
+        text_element.style["fill"] = color
         tspan = Tspan(text_string)
         tspan.text = text_string
         text_element.append(tspan)
