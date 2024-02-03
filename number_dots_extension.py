@@ -15,6 +15,7 @@ from inkex import (
     Tspan,
 )
 from inkex.localization import inkex_gettext as _
+from inkex.utils import debug
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
@@ -85,6 +86,14 @@ class NumberDots(EffectExtension):
             default=False,
         )
 
+        # have a minimal distance between dots
+        pars.add_argument(
+            "--minimal_distance",
+            type=int,
+            help="Minimal distance between dots",
+            default=6,
+        )
+
     # Define the main effect method
     def effect(self):
         so = self.options  # shorthand for self.options
@@ -93,9 +102,10 @@ class NumberDots(EffectExtension):
         self.fontStyle["font-size"] = self.svg.unittouu(so.fontsize)
         self.fontsize = self.svg.unittouu(so.fontsize)
 
-        # Filter selected elements to only include PathElements
+        # find selected path element
         selected_path = self.svg.selection.filter(PathElement)
-        if not selected_path:
+
+        if selected_path is None:
             raise AbortExtension(_("Please select at least one path object."))
 
         puzzle_planes_layer = self.svg.add(Layer())
@@ -105,30 +115,45 @@ class NumberDots(EffectExtension):
         text_layer = self.svg.add(Layer())
         text_layer.set("id", "text_layer")
 
-        # Plot centroids in filled elements
-        if so.plot_centroids:
-            self.plot_puzzle_centroids()
-
         dot_connections = self.create_mapping(selected_path)
+        collisions, sorted_dots = self.check_density(
+            dot_connections, so.minimal_distance
+        )
+        avg_distance, lowest_distance, highest_distance = self.evaluate_distances(
+            sorted_dots
+        )
 
+        # Plot the mapping
         if so.plot_dots:
-            self.plot_puzzle_dots(dot_connections)
-
+            self.plot_puzzle_dots(dot_connections, collisions)
+        # Plot the sequence
         if so.plot_sequence:
             sequence = self.plot_letter_sequence(dot_connections)
             text_layer.append(sequence)
+        # Plot the compact sequence
         compact_mapping = self.compress_mapping(dot_connections)
         if so.plot_compact_sequence:
             compact_sequence = self.plot_compact_mapping(compact_mapping)
             text_layer.append(compact_sequence)
-
-        self.write_mapping_to_file(dot_connections, "connections.json")
-        self.write_mapping_to_file(compact_mapping, "compact_mapping.json")
-        self.print_stats(dot_connections)
-
+        # Plot centroids in filled elements
+        if so.plot_centroids:
+            self.plot_puzzle_centroids()
+        # Plot the reference sequence
         if so.plot_reference_sequence:
             self.createReferenceSequence()
 
+        # Print statistics
+        planes = self.count_planes()
+        self.print_stats(
+            dot_connections, avg_distance, lowest_distance, highest_distance, planes
+        )
+
+        self.write_mapping_to_file(collisions, "collisions.json")
+        self.write_mapping_to_file(sorted_dots, "sorted_dots.json")
+        self.write_mapping_to_file(dot_connections, "dot_connections.json")
+        self.write_mapping_to_file(compact_mapping, "compact_mapping.json")
+
+        # Set the style of the path
         for puzzle_path in selected_path:
             puzzle_path.set("id", "source_path")
             puzzle_path.style = Style(
@@ -139,9 +164,57 @@ class NumberDots(EffectExtension):
                 }
             )
 
+    def create_layers(self):
+        """Create layers for puzzle planes, dots, and text"""
+        puzzle_planes_layer = self.svg.add(Layer())
+        puzzle_planes_layer.set("id", "puzzle_planes")
+
+        puzzle_dots_layer = self.svg.add(Layer())
+        puzzle_dots_layer.set("id", "puzzle_dots")
+
+        text_layer = self.svg.add(Layer())
+        text_layer.set("id", "text_layer")
+
+    def check_density(self, dots: list, minimal_distance: int):
+        for dot in dots:
+            dot["has_collision"] = False
+            for other_dot in dots:
+                if dot["letter_label"] != other_dot["letter_label"]:
+                    distance = math.sqrt(
+                        (dot["x"] - other_dot["x"]) ** 2
+                        + (dot["y"] - other_dot["y"]) ** 2
+                    )
+                    dot["distance"] = round(distance, 2)
+                    dot["collides_with"] = other_dot["letter_label"]
+                    if distance <= minimal_distance:
+                        dot["has_collision"] = True
+                        break
+        sorted_dots = sorted(dots, key=lambda k: k["distance"])
+        colliding_dots = [dot for dot in sorted_dots if dot["has_collision"]]
+        return colliding_dots, sorted_dots
+
+    def evaluate_distances(self, sorted_distances):
+        num_distances = len(sorted_distances)
+        total_distance = sum(distance["distance"] for distance in sorted_distances)
+        avg_distance = total_distance / num_distances if num_distances > 0 else 0
+        lowest_distance = sorted_distances[0]["distance"]
+        highest_distance = sorted_distances[-1]["distance"]
+
+        return avg_distance, lowest_distance, highest_distance
+
+    def count_planes(self):
+        xpath_query = ".//*[@style and contains(@style, 'fill:#ff0000')]"
+        red_planes = self.svg.xpath(xpath_query)
+        if not red_planes:
+            return 0
+        return len(red_planes)
+
     def plot_puzzle_centroids(self, target_fill="#ff0000"):
         xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
         red_planes = self.svg.xpath(xpath_query)
+
+        if red_planes is None or len(red_planes) == 0:
+            return
 
         for index, plane in enumerate(red_planes):
             endpoints = plane.path.transform(plane.composed_transform()).end_points
@@ -153,8 +226,11 @@ class NumberDots(EffectExtension):
                 x_coords.append(x)
                 y_coords.append(y)
 
-                centroid_x = sum(x_coords) / len(x_coords)
-                centroid_y = sum(y_coords) / len(y_coords)
+            if not x_coords or not y_coords:
+                continue
+
+            centroid_x = sum(x_coords) / len(x_coords)
+            centroid_y = sum(y_coords) / len(y_coords)
 
             id = index + 1
 
@@ -229,7 +305,14 @@ class NumberDots(EffectExtension):
 
         return reference_sequence
 
-    def print_stats(self, mapping: list):
+    def print_stats(
+        self,
+        mapping: list,
+        avg_distance: float,
+        lowest_distance: float,
+        highest_distance: float,
+        planes: int,
+    ):
         """Print statistics about the mapping"""
         unique_dots = []
 
@@ -258,12 +341,12 @@ class NumberDots(EffectExtension):
             self.add_text(
                 50,
                 1053,
-                f"{len(mapping)} connections ({total_num_dots} dots)",
-                "total_num_dots",
+                f"{len(mapping)} steps, {total_num_dots} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes",
+                "puzzle_stats_textbox",
             )
         )
 
-    def plot_puzzle_dots(self, mapping: list):
+    def plot_puzzle_dots(self, mapping: list, collisions: list):
         """Plot the mapping to the canvas"""
         unique_dots = []
 
@@ -292,6 +375,14 @@ class NumberDots(EffectExtension):
             x_center = step["x"]  # Center of the circle
             y_center = step["y"]
 
+            # Verify is the dot is colliding with another dot
+            collision_exists = False
+            for collision in collisions:
+                if collision["letter_label"] == step["letter_label"]:
+                    collision_exists = True
+                    break
+
+            # Add the text label
             text_element_with_label = self.svg.getElementById("text_layer").add(
                 TextElement(x=str(x_center), y=str(y_center))
             )
@@ -302,7 +393,11 @@ class NumberDots(EffectExtension):
             text_element_with_label.set("id", f"text_label_{step['letter_label']}")
             text_element_with_label.style = self.fontStyle
             text_element_with_label.set("letter-spacing", "1px")
+            #  make red when collision
+            if collision_exists:
+                text_element_with_label.style["fill"] = "#ff0000"
 
+            # Add the dot to the canvas
             black_circle = self.createCircle(
                 x_center,
                 y_center,
@@ -334,9 +429,6 @@ class NumberDots(EffectExtension):
         x_pos = 49
         width = 677
         height = 113
-
-        if len(mapping) < 500:
-            y_pos = 929 + 50
 
         for index, item in enumerate(mapping):
             if (index + 1) % 5 == 0 and index != 0:
@@ -392,25 +484,30 @@ class NumberDots(EffectExtension):
         for node in nodes:
             path_trans_applied = node.path.transform(node.composed_transform())
 
-            for _, (x, y) in enumerate(path_trans_applied.end_points):
-                dot_number += 1
+            previous_point = None
 
+            for _, (x, y) in enumerate(path_trans_applied.end_points):
                 # Round the coordinates using the specified precision factor
                 x_rounded = round(x / precision) * precision
                 y_rounded = round(y / precision) * precision
-                rounded_coords = (x_rounded, y_rounded)
+                current_point = (x_rounded, y_rounded)
 
-                if rounded_coords in coord_to_label:
+                if current_point in coord_to_label:
                     # Coordinate already exists, use the same label
-                    letter_label = coord_to_label[rounded_coords]
+                    letter_label = coord_to_label[current_point]
                 else:
                     # New coordinate, generate a new label and store it
                     next_unique_dot_number = len(coord_to_label) + 1
                     letter_label = self.get_letter_id_from_number(
                         next_unique_dot_number
                     )
-                    coord_to_label[rounded_coords] = letter_label
+                    coord_to_label[current_point] = letter_label
 
+                # Increment the dot number if the current point is different from the previous point
+                if current_point != previous_point:
+                    dot_number += 1
+
+                # Add the mapping to the result
                 result_mapping.append(
                     {
                         "x": x_rounded,
