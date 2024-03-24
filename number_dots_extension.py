@@ -49,7 +49,9 @@ class NumberDots(EffectExtension):
         )
 
         pars.add_argument("--fontsize", default="8px", help="Size of node labels")
-        pars.add_argument("--fontweight", default="bold", help="Weight of node labels")
+        pars.add_argument(
+            "--fontweight", default="normal", help="Weight of node labels"
+        )
         pars.add_argument(
             "--start", type=int, default=1, help="First number in the sequence"
         )
@@ -146,6 +148,20 @@ class NumberDots(EffectExtension):
             default="Polydot Puzzle",
         )
 
+        pars.add_argument(
+            "--add_copyright",
+            type=Boolean,
+            help="Add copyright",
+            default=False,
+        )
+
+        pars.add_argument(
+            "--copyright_text",
+            type=str,
+            help="Text for the copyright",
+            default="Copyright © Polydot Puzzles 2024",
+        )
+
     # Define the main effect method
     def effect(self):
         so = self.options  # shorthand for self.options
@@ -205,7 +221,10 @@ class NumberDots(EffectExtension):
             )
 
         self.add_title(so.title)
-        self.add_copy_right()
+
+        copyright_text = so.copyright_text
+        if so.add_copyright:
+            self.add_copyright(copyright_text)
 
         # Add the level of difficulty, defined as the number of stars
         # where 1 star is the easiest and 5 stars is the hardest
@@ -244,11 +263,11 @@ class NumberDots(EffectExtension):
         )
         text_layer.append(title_element)
 
-    def add_copy_right(self):
+    def add_copyright(self, copyright_text: str):
         text_layer = self.svg.getElementById("text_layer")
-        copy_right = TextElement(x="634", y="1040", id="copy_right_textbox")
-        copy_right.text = "Copyright © Polydot Puzzles 2024"
-        copy_right.style = Style(
+        copyright = TextElement(x="634", y="1040", id="copyright_textbox")
+        copyright.text = copyright_text
+        copyright.style = Style(
             {
                 "font-family": "Garamond",
                 "fill-opacity": "1.0",
@@ -256,19 +275,29 @@ class NumberDots(EffectExtension):
                 "font-size": "8px",
             }
         )
-        text_layer.append(copy_right)
+        text_layer.append(copyright)
 
     def add_level_of_difficulty(self, level: int):
         grouped_stars = Group()
         grouped_stars.set("id", "grouped_stars")
         self.svg.getElementById("text_layer").append(grouped_stars)
+        grouped_brains = Group()
+        grouped_brains.set("id", "grouped_brains")
+        self.svg.getElementById("text_layer").append(grouped_brains)
         text_layer = self.svg.getElementById("text_layer")
+
         for i in range(5):
             rating_star_path = "m 73.77 112.6575 l -5.835 -3.15 l -6.135 3.15 l 1.3275 -6.6225 l -4.8075 -4.9425 l 6.735 -0.855 l 2.955 -6.1125 l 2.91 6.0975 l 6.66 1.0875 l -4.8975 4.575 z"
 
             rating_star = PathElement(id=f"rating_star_{i}")
             rating_star.set("d", rating_star_path)
             rating_star.set("transform", f"translate({150 + (i * 20)}, 775)")
+
+            brain_character = TextElement(id=f"brain_character_{i}", y="775")
+            brain_character.text = "🧠"
+            brain_character.set("font-size", "20px")
+            brain_character.set("x", str(150 + (i * 25)))
+            brain_character.set("fill", "#e6e6e6")
 
             if i < level:
                 rating_star.style = Style(
@@ -290,9 +319,12 @@ class NumberDots(EffectExtension):
                         "stroke-linejoin": "round",
                     }
                 )
+                brain_character.set("fill", "#ffffff")
 
             grouped_stars.append(rating_star)
+            grouped_brains.append(brain_character)
         text_layer.append(grouped_stars)
+        text_layer.append(grouped_brains)
 
     def remove_layers(self, so):
         if so.replace_dots:
