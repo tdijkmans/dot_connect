@@ -1,6 +1,8 @@
 # Import required modules
 import math
+import random
 
+import inkex
 from inkex import (
     AbortExtension,
     Boolean,
@@ -15,6 +17,7 @@ from inkex import (
     Tspan,
 )
 from inkex.localization import inkex_gettext as _
+from inkex.paths import Line, Move, Path
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
@@ -37,8 +40,18 @@ class NumberDots(EffectExtension):
 
     # Define method to add command-line arguments for the extension
     def add_arguments(self, pars):
+        """Add command-line arguments for the extension"""
+        pars.add_argument(
+            "--align_within",
+            type=int,
+            default=3,
+            help="Co-align the dots within the specified distance",
+        )
+
         pars.add_argument("--fontsize", default="8px", help="Size of node labels")
-        pars.add_argument("--fontweight", default="bold", help="Weight of node labels")
+        pars.add_argument(
+            "--fontweight", default="normal", help="Weight of node labels"
+        )
         pars.add_argument(
             "--start", type=int, default=1, help="First number in the sequence"
         )
@@ -48,6 +61,20 @@ class NumberDots(EffectExtension):
             type=int,
             default=1,
             help="Precision for coordinates; higher value represents lower resolution",
+        )
+
+        pars.add_argument(
+            "--extreme_difficulty",
+            type=Boolean,
+            help="Enable extreme difficulty",
+            default=False,
+        )
+
+        pars.add_argument(
+            "--add_stats",
+            type=Boolean,
+            help="Add statistics",
+            default=True,
         )
 
         pars.add_argument(
@@ -85,6 +112,56 @@ class NumberDots(EffectExtension):
             default=False,
         )
 
+        # have a minimal distance between dots
+        pars.add_argument(
+            "--minimal_distance",
+            type=int,
+            help="Minimal distance between dots",
+            default=6,
+        )
+
+        pars.add_argument(
+            "--replace_dots",
+            type=Boolean,
+            help="Replace the dots",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--replace_centroids",
+            type=Boolean,
+            help="Replace the centroids",
+            default=False,
+        )
+
+        pars.add_argument(
+            "--replace_text",
+            type=Boolean,
+            help="Replace the text",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--title",
+            type=str,
+            help="Title of the puzzle",
+            default="Polydot Puzzle",
+        )
+
+        pars.add_argument(
+            "--add_copyright",
+            type=Boolean,
+            help="Add copyright",
+            default=False,
+        )
+
+        pars.add_argument(
+            "--copyright_text",
+            type=str,
+            help="Text for the copyright",
+            default="Copyright © Polydot Puzzles 2024",
+        )
+
     # Define the main effect method
     def effect(self):
         so = self.options  # shorthand for self.options
@@ -93,42 +170,74 @@ class NumberDots(EffectExtension):
         self.fontStyle["font-size"] = self.svg.unittouu(so.fontsize)
         self.fontsize = self.svg.unittouu(so.fontsize)
 
-        # Filter selected elements to only include PathElements
-        selected_path = self.svg.selection.filter(PathElement)
-        if not selected_path:
+        # find selected path element
+        selected_path: PathElement = self.svg.selection.filter(PathElement)
+
+        if selected_path is None:
             raise AbortExtension(_("Please select at least one path object."))
 
-        puzzle_planes_layer = self.svg.add(Layer())
-        puzzle_planes_layer.set("id", "puzzle_planes")
-        puzzle_dots_layer = self.svg.add(Layer())
-        puzzle_dots_layer.set("id", "puzzle_dots")
-        text_layer = self.svg.add(Layer())
-        text_layer.set("id", "text_layer")
-
-        # Plot centroids in filled elements
-        if so.plot_centroids:
-            self.plot_puzzle_centroids()
+        # Remove layers for puzzle planes, dots, and text if the option is set
+        self.remove_layers(so)
+        # Create layers for puzzle planes, dots, and text
+        self.create_layers()
+        text_layer = self.svg.getElementById("text_layer")
 
         dot_connections = self.create_mapping(selected_path)
+        collisions, sorted_dots = self.check_density(
+            dot_connections, so.minimal_distance
+        )
+        avg_distance, lowest_distance, highest_distance = self.evaluate_distances(
+            sorted_dots
+        )
 
+        # Plot the mapping
         if so.plot_dots:
-            self.plot_puzzle_dots(dot_connections)
-
+            self.plot_puzzle_dots(dot_connections, collisions)
+        # Plot the sequence
         if so.plot_sequence:
             sequence = self.plot_letter_sequence(dot_connections)
             text_layer.append(sequence)
+            # Plot the sequence as pairs
+        if so.extreme_difficulty:
+            pairs = self.plot_random_sequence_pairs(dot_connections)
+            text_layer.append(pairs)
+        # Plot the compact sequence
         compact_mapping = self.compress_mapping(dot_connections)
         if so.plot_compact_sequence:
             compact_sequence = self.plot_compact_mapping(compact_mapping)
             text_layer.append(compact_sequence)
-
-        self.write_mapping_to_file(dot_connections, "connections.json")
-        self.write_mapping_to_file(compact_mapping, "compact_mapping.json")
-        self.print_stats(dot_connections)
-
+        # Plot centroids in filled elements
+        if so.plot_centroids:
+            self.plot_puzzle_centroids()
+        # Plot the reference sequence
         if so.plot_reference_sequence:
             self.createReferenceSequence()
 
+        if so.add_stats:
+            # Print statistics
+            planes = self.count_planes()
+            self.print_stats(
+                dot_connections, avg_distance, lowest_distance, highest_distance, planes
+            )
+
+        self.add_title(so.title)
+
+        copyright_text = so.copyright_text
+        if so.add_copyright:
+            self.add_copyright(copyright_text)
+
+        # Add the level of difficulty, defined as the number of stars
+        # where 1 star is the easiest and 5 stars is the hardest
+        # for every 200 dots, add 1 star
+        difficulty = (len(dot_connections) // 200) + 1
+        self.add_level_of_difficulty(difficulty)
+
+        self.write_mapping_to_file(collisions, "collisions.json")
+        self.write_mapping_to_file(sorted_dots, "sorted_dots.json")
+        self.write_mapping_to_file(dot_connections, "dot_connections.json")
+        self.write_mapping_to_file(compact_mapping, "compact_mapping.json")
+
+        # Set the style of the path
         for puzzle_path in selected_path:
             puzzle_path.set("id", "source_path")
             puzzle_path.style = Style(
@@ -139,9 +248,155 @@ class NumberDots(EffectExtension):
                 }
             )
 
+    def add_title(self, title: str):
+        text_layer = self.svg.getElementById("text_layer")
+        title_element = TextElement(x="50", y="885", id="puzzle_title_textbox")
+        title_element.text = title
+        title_element.style = Style(
+            {
+                "font-family": "Consolas",
+                "fill-opacity": "1.0",
+                "fill": "#000000",
+                "font-size": "20px",
+                "font-weight": "bold",
+            }
+        )
+        text_layer.append(title_element)
+
+    def add_copyright(self, copyright_text: str):
+        text_layer = self.svg.getElementById("text_layer")
+        copyright = TextElement(x="634", y="1040", id="copyright_textbox")
+        copyright.text = copyright_text
+        copyright.style = Style(
+            {
+                "font-family": "Garamond",
+                "fill-opacity": "1.0",
+                "fill": "#000000",
+                "font-size": "8px",
+            }
+        )
+        text_layer.append(copyright)
+
+    def add_level_of_difficulty(self, level: int):
+        grouped_stars = Group()
+        grouped_stars.set("id", "grouped_stars")
+        self.svg.getElementById("text_layer").append(grouped_stars)
+        grouped_brains = Group()
+        grouped_brains.set("id", "grouped_brains")
+        self.svg.getElementById("text_layer").append(grouped_brains)
+        text_layer = self.svg.getElementById("text_layer")
+
+        for i in range(5):
+            rating_star_path = "m 73.77 112.6575 l -5.835 -3.15 l -6.135 3.15 l 1.3275 -6.6225 l -4.8075 -4.9425 l 6.735 -0.855 l 2.955 -6.1125 l 2.91 6.0975 l 6.66 1.0875 l -4.8975 4.575 z"
+
+            rating_star = PathElement(id=f"rating_star_{i}")
+            rating_star.set("d", rating_star_path)
+            rating_star.set("transform", f"translate({150 + (i * 20)}, 775)")
+
+            brain_character = TextElement(id=f"brain_character_{i}", y="775")
+            brain_character.text = "🧠"
+            brain_character.set("font-size", "20px")
+            brain_character.set("x", str(150 + (i * 25)))
+            brain_character.set("fill", "#e6e6e6")
+
+            if i < level:
+                rating_star.style = Style(
+                    {
+                        "stroke": "#000000",
+                        "stroke-width": "1pt",
+                        "fill": "#000000",
+                        "stroke-linecap": "round",
+                        "stroke-linejoin": "round",
+                    }
+                )
+            else:
+                rating_star.style = Style(
+                    {
+                        "stroke": "#000000",
+                        "stroke-width": "1pt",
+                        "fill": "#ffffff",
+                        "stroke-linecap": "round",
+                        "stroke-linejoin": "round",
+                    }
+                )
+                brain_character.set("fill", "#ffffff")
+
+            grouped_stars.append(rating_star)
+            grouped_brains.append(brain_character)
+        text_layer.append(grouped_stars)
+        text_layer.append(grouped_brains)
+
+    def remove_layers(self, so):
+        if so.replace_dots:
+            self.remove_layer("puzzle_dots")
+
+        if so.replace_centroids:
+            self.remove_layer("puzzle_centroids")
+
+        if so.replace_text:
+            self.remove_layer("text_layer")
+
+    def remove_layer(self, id):
+        """Remove layers for puzzle planes, dots, and text"""
+        layer = self.svg.getElementById(id)
+
+        if layer is not None:
+            self.svg.remove(layer)
+
+    def create_layers(self):
+        """Create layers for puzzle planes, dots, and text"""
+        puzzle_planes_layer = self.svg.add(Layer())
+        puzzle_planes_layer.set("id", "puzzle_planes")
+
+        puzzle_dots_layer = self.svg.add(Layer())
+        puzzle_dots_layer.set("id", "puzzle_dots")
+
+        text_layer = self.svg.add(Layer())
+        text_layer.set("id", "text_layer")
+
+    def check_density(self, dots: list, minimal_distance: int):
+        for dot in dots:
+            dot["has_collision"] = False
+            for other_dot in dots:
+                if dot["letter_label"] != other_dot["letter_label"]:
+                    distance = math.sqrt(
+                        (dot["x"] - other_dot["x"]) ** 2
+                        + (dot["y"] - other_dot["y"]) ** 2
+                    )
+                    dot["distance"] = round(distance, 2)
+                    dot["collides_with"] = other_dot["letter_label"]
+                    if distance <= minimal_distance:
+                        dot["has_collision"] = True
+                        break
+        sorted_dots = sorted(dots, key=lambda k: k["distance"])
+        colliding_dots = [dot for dot in sorted_dots if dot["has_collision"]]
+        return colliding_dots, sorted_dots
+
+    def evaluate_distances(self, sorted_distances):
+        num_distances = len(sorted_distances)
+        total_distance = sum(distance["distance"] for distance in sorted_distances)
+        avg_distance = total_distance / num_distances if num_distances > 0 else 0
+        lowest_distance = sorted_distances[0]["distance"]
+        highest_distance = sorted_distances[-1]["distance"]
+
+        return avg_distance, lowest_distance, highest_distance
+
+    def count_planes(self):
+        processed_planes = self.svg.getElementById("puzzle_planes")
+
+        xpath_query = ".//*[@style and contains(@style, 'fill:#ff0000')]"
+        red_planes = self.svg.xpath(xpath_query)
+        number_of_red_planes = len(red_planes) if red_planes is not None else 0
+        number_of_planes = len(processed_planes) if processed_planes is not None else 0
+
+        return number_of_planes or number_of_red_planes
+
     def plot_puzzle_centroids(self, target_fill="#ff0000"):
         xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
         red_planes = self.svg.xpath(xpath_query)
+
+        if red_planes is None or len(red_planes) == 0:
+            return
 
         for index, plane in enumerate(red_planes):
             endpoints = plane.path.transform(plane.composed_transform()).end_points
@@ -153,8 +408,11 @@ class NumberDots(EffectExtension):
                 x_coords.append(x)
                 y_coords.append(y)
 
-                centroid_x = sum(x_coords) / len(x_coords)
-                centroid_y = sum(y_coords) / len(y_coords)
+            if not x_coords or not y_coords:
+                continue
+
+            centroid_x = sum(x_coords) / len(x_coords)
+            centroid_y = sum(y_coords) / len(y_coords)
 
             id = index + 1
 
@@ -229,7 +487,14 @@ class NumberDots(EffectExtension):
 
         return reference_sequence
 
-    def print_stats(self, mapping: list):
+    def print_stats(
+        self,
+        mapping: list,
+        avg_distance: float,
+        lowest_distance: float,
+        highest_distance: float,
+        planes: int,
+    ):
         """Print statistics about the mapping"""
         unique_dots = []
 
@@ -258,12 +523,12 @@ class NumberDots(EffectExtension):
             self.add_text(
                 50,
                 1053,
-                f"{len(mapping)} connections ({total_num_dots} dots)",
-                "total_num_dots",
+                f"{len(mapping)} steps, {total_num_dots} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes",
+                "puzzle_stats_textbox",
             )
         )
 
-    def plot_puzzle_dots(self, mapping: list):
+    def plot_puzzle_dots(self, mapping: list, collisions: list):
         """Plot the mapping to the canvas"""
         unique_dots = []
 
@@ -292,6 +557,14 @@ class NumberDots(EffectExtension):
             x_center = step["x"]  # Center of the circle
             y_center = step["y"]
 
+            # Verify is the dot is colliding with another dot
+            collision_exists = False
+            for collision in collisions:
+                if collision["letter_label"] == step["letter_label"]:
+                    collision_exists = True
+                    break
+
+            # Add the text label
             text_element_with_label = self.svg.getElementById("text_layer").add(
                 TextElement(x=str(x_center), y=str(y_center))
             )
@@ -302,7 +575,11 @@ class NumberDots(EffectExtension):
             text_element_with_label.set("id", f"text_label_{step['letter_label']}")
             text_element_with_label.style = self.fontStyle
             text_element_with_label.set("letter-spacing", "1px")
+            #  make red when collision
+            if collision_exists:
+                text_element_with_label.style["fill"] = "#ff0000"
 
+            # Add the dot to the canvas
             black_circle = self.createCircle(
                 x_center,
                 y_center,
@@ -335,9 +612,6 @@ class NumberDots(EffectExtension):
         width = 677
         height = 113
 
-        if len(mapping) < 500:
-            y_pos = 929 + 50
-
         for index, item in enumerate(mapping):
             if (index + 1) % 5 == 0 and index != 0:
                 sequence_string += f"{item['letter_label']}" + " " + " "
@@ -352,6 +626,36 @@ class NumberDots(EffectExtension):
             sequence_string,
             "sequence_string_textbox",
             "sequence_string_rect",
+            "#000000",  # Black
+        )
+
+    def plot_random_sequence_pairs(self, mapping: list):
+        """Plot the mapping to the canvas as a sequence of shuffled pairs"""
+
+        pairs = []
+
+        for index, item in enumerate(mapping):
+            if index != 0:
+                pairs.append(
+                    f"{mapping[index-1]['letter_label']}-{item['letter_label']}"
+                )
+
+        random.shuffle(pairs)
+        sequence_string = " ".join(pairs)
+
+        x_pos = 49
+        y_pos = 929
+        width = 677
+        height = 113
+
+        return self.add_text_in_rect(
+            x_pos,
+            y_pos,
+            width,
+            height,
+            sequence_string,
+            "sequence_string_textbox_extreme",
+            "sequence_string_rect_extreme",
             "#000000",  # Black
         )
 
@@ -390,27 +694,33 @@ class NumberDots(EffectExtension):
         precision = self.options.precision
 
         for node in nodes:
-            path_trans_applied = node.path.transform(node.composed_transform())
+            path: Path = node.path
+            path_trans_applied = path.transform(node.composed_transform())
+
+            previous_point = None
 
             for _, (x, y) in enumerate(path_trans_applied.end_points):
-                dot_number += 1
-
                 # Round the coordinates using the specified precision factor
                 x_rounded = round(x / precision) * precision
                 y_rounded = round(y / precision) * precision
-                rounded_coords = (x_rounded, y_rounded)
+                current_point = (x_rounded, y_rounded)
 
-                if rounded_coords in coord_to_label:
+                if current_point in coord_to_label:
                     # Coordinate already exists, use the same label
-                    letter_label = coord_to_label[rounded_coords]
+                    letter_label = coord_to_label[current_point]
                 else:
                     # New coordinate, generate a new label and store it
                     next_unique_dot_number = len(coord_to_label) + 1
                     letter_label = self.get_letter_id_from_number(
                         next_unique_dot_number
                     )
-                    coord_to_label[rounded_coords] = letter_label
+                    coord_to_label[current_point] = letter_label
 
+                # Increment the dot number if the current point is different from the previous point
+                if current_point != previous_point:
+                    dot_number += 1
+
+                # Add the mapping to the result
                 result_mapping.append(
                     {
                         "x": x_rounded,

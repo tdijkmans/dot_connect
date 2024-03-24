@@ -1,39 +1,91 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-    <name>Number Dots</name>
+    <name>Create dot-to-dot puzzle</name>
     <id>org.inkscape.filter.number_dots</id>
     <param name="tab" type="notebook">
         <page name="Options" gui-text="Options">
+            <label appearance="header">General options</label>
+            <param name='title' type='string' gui-text='Title:'
+                gui-description='Title of the dot-to-dot puzzle.'>Dot-to-dot puzzle</param>
+
+            <param name="add_copyright" type="bool" gui-text="Add copyright"
+                gui-description="If checked, the copyright will be added to the output.">
+                true</param>
+            <param name="copyright_text" type="string" gui-text="Copyright text:"
+                gui-description="Text to be added as copyright.">Copyright © Polydot Puzzles 2024</param>
+
+
+            <separator />
+            <label appearance="header">Puzzle plot options</label>
             <param name="fontsize" type="string" gui-text="Font size:"
                 gui-description="Size of the node number labels (20px, 12pt...)">6px</param>
-            <param name="fontweight" type="optiongroup" gui-text="Font weight:" appearance="combo" gui-description="Weight of the node number labels">
-                <option value="bold" gui-text="Bold">Bold</option>
+            <param name="fontweight" type="optiongroup" gui-text="Font weight:" appearance="combo"
+                gui-description="Weight of the node number labels">
                 <option value="normal" gui-text="Normal">Normal</option>
+                <option value="bold" gui-text="Bold">Bold</option>
             </param>
             <param name="start" type="int" min="0" max="1000" gui-text="Starting dot number:"
-                gui-description="First number in the sequence, assigned to the first node of the path.">1</param>
+                gui-description="First number in the sequence, assigned to the first node of the path.">
+                1</param>
+            <param name="minimal_distance" type="int" gui-text="Minimal distance between dots:"
+                gui-description="Minimal distance between dots.">6</param>
             <param name="precision" type="int" min="0" max="10" gui-text="Precision:"
-                gui-description="Rounding factor for X- and Y-coordinates">1</param>          
+                gui-description="Rounding factor for X- and Y-coordinates">1</param>
+
+
+            <separator />
+            <label appearance="header">Puzzle instructions</label>
             <param name="plot_centroids" type="bool" gui-text="Plot centroids"
-                gui-description="If checked, the centroids of the paths will be plotted.">true</param>
+                gui-description="If checked, the centroids of planes filled with color red (#ff0000) will be plotted.">
             <param name="plot_dots" type="bool" gui-text="Plot dots"
                 gui-description="If checked, the dots will be plotted.">true</param>
+
+
             <param name="plot_sequence" type="bool" gui-text="Plot sequence"
-                gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted.">true</param>
+                gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted.">
+                true</param>
+
+
+            <separator />
+            <label appearance="header">Analysis configuration</label>
+            <param name="add_stats" type="bool" gui-text="Add stats"
+                gui-description="If checked, the stats will be added to the output.">true</param>
+
+
+            <separator />
+            <label appearance="header">Replace existing elements.</label>
+            <param name="replace_dots" type="bool" gui-text="Replace dots"
+                gui-description="If checked, the existing dots will be removed and replaced by the new dots.">
+                true</param>
+            <param name="replace_centroids" type="bool" gui-text="Replace centroids"
+                gui-description="If checked, the existing centroids will be removed and replaced by the new centroids.">
+                false</param>
+            <param name="replace_text" type="bool" gui-text="Replace text"
+                gui-description="If checked, the existing text will be removed and replaced by the new text.">
+                true</param>
+
+        </page>
+        <page name="Advanced" gui-text="Advanced">
+            <label appearance="header">Advanced options</label>
             <param name="plot_compact_sequence" type="bool" gui-text="Plot compact sequence"
-                gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted in a compact form.">true</param>
+                gui-description="If checked, only numbers that deviate from the reference sequence will be plotted.">
+                true</param>
+            <param name="extreme_difficulty" type="bool" gui-text="Extreme difficulty"
+                gui-description="If checked, output will output line segments connecting the dots in a random order.">
+                false</param>
             <param name="plot_reference_sequence" type="bool" gui-text="Plot reference sequence"
-                gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted in a compact form.">false</param>              
+                gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted in a compact form.">
+                false</param>
+
         </page>
         <page name="Help" gui-text="Help">
             <label xml:space="preserve">This extension replaces the paths in the selection with numbered dots in place of their nodes. The numbers are assigned to the nodes in the order they appear in the path. Filled planes with color red (#ff0000) are used to plot the symbol '*' at the approximate center of the path.
             </label>
         </page>
     </param>
-
     <effect>
         <effects-menu>
-            <submenu name="Generate numbered dots"/>
+            <submenu name="Generate numbered dots" />
         </effects-menu>
     </effect>
     <script>
