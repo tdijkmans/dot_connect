@@ -1,6 +1,8 @@
 # Import required modules
 import math
+import random
 
+import inkex
 from inkex import (
     AbortExtension,
     Boolean,
@@ -15,7 +17,7 @@ from inkex import (
     Tspan,
 )
 from inkex.localization import inkex_gettext as _
-from inkex.utils import debug
+from inkex.paths import Line, Move, Path
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
@@ -38,6 +40,14 @@ class NumberDots(EffectExtension):
 
     # Define method to add command-line arguments for the extension
     def add_arguments(self, pars):
+        """Add command-line arguments for the extension"""
+        pars.add_argument(
+            "--align_within",
+            type=int,
+            default=3,
+            help="Co-align the dots within the specified distance",
+        )
+
         pars.add_argument("--fontsize", default="8px", help="Size of node labels")
         pars.add_argument("--fontweight", default="bold", help="Weight of node labels")
         pars.add_argument(
@@ -49,6 +59,20 @@ class NumberDots(EffectExtension):
             type=int,
             default=1,
             help="Precision for coordinates; higher value represents lower resolution",
+        )
+
+        pars.add_argument(
+            "--extreme_difficulty",
+            type=Boolean,
+            help="Enable extreme difficulty",
+            default=False,
+        )
+
+        pars.add_argument(
+            "--add_stats",
+            type=Boolean,
+            help="Add statistics",
+            default=True,
         )
 
         pars.add_argument(
@@ -94,6 +118,34 @@ class NumberDots(EffectExtension):
             default=6,
         )
 
+        pars.add_argument(
+            "--replace_dots",
+            type=Boolean,
+            help="Replace the dots",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--replace_centroids",
+            type=Boolean,
+            help="Replace the centroids",
+            default=False,
+        )
+
+        pars.add_argument(
+            "--replace_text",
+            type=Boolean,
+            help="Replace the text",
+            default=True,
+        )
+
+        pars.add_argument(
+            "--title",
+            type=str,
+            help="Title of the puzzle",
+            default="Polydot Puzzle",
+        )
+
     # Define the main effect method
     def effect(self):
         so = self.options  # shorthand for self.options
@@ -103,17 +155,16 @@ class NumberDots(EffectExtension):
         self.fontsize = self.svg.unittouu(so.fontsize)
 
         # find selected path element
-        selected_path = self.svg.selection.filter(PathElement)
+        selected_path: PathElement = self.svg.selection.filter(PathElement)
 
         if selected_path is None:
             raise AbortExtension(_("Please select at least one path object."))
 
-        puzzle_planes_layer = self.svg.add(Layer())
-        puzzle_planes_layer.set("id", "puzzle_planes")
-        puzzle_dots_layer = self.svg.add(Layer())
-        puzzle_dots_layer.set("id", "puzzle_dots")
-        text_layer = self.svg.add(Layer())
-        text_layer.set("id", "text_layer")
+        # Remove layers for puzzle planes, dots, and text if the option is set
+        self.remove_layers(so)
+        # Create layers for puzzle planes, dots, and text
+        self.create_layers()
+        text_layer = self.svg.getElementById("text_layer")
 
         dot_connections = self.create_mapping(selected_path)
         collisions, sorted_dots = self.check_density(
@@ -130,6 +181,10 @@ class NumberDots(EffectExtension):
         if so.plot_sequence:
             sequence = self.plot_letter_sequence(dot_connections)
             text_layer.append(sequence)
+            # Plot the sequence as pairs
+        if so.extreme_difficulty:
+            pairs = self.plot_random_sequence_pairs(dot_connections)
+            text_layer.append(pairs)
         # Plot the compact sequence
         compact_mapping = self.compress_mapping(dot_connections)
         if so.plot_compact_sequence:
@@ -142,11 +197,21 @@ class NumberDots(EffectExtension):
         if so.plot_reference_sequence:
             self.createReferenceSequence()
 
-        # Print statistics
-        planes = self.count_planes()
-        self.print_stats(
-            dot_connections, avg_distance, lowest_distance, highest_distance, planes
-        )
+        if so.add_stats:
+            # Print statistics
+            planes = self.count_planes()
+            self.print_stats(
+                dot_connections, avg_distance, lowest_distance, highest_distance, planes
+            )
+
+        self.add_title(so.title)
+        self.add_copy_right()
+
+        # Add the level of difficulty, defined as the number of stars
+        # where 1 star is the easiest and 5 stars is the hardest
+        # for every 200 dots, add 1 star
+        difficulty = (len(dot_connections) // 200) + 1
+        self.add_level_of_difficulty(difficulty)
 
         self.write_mapping_to_file(collisions, "collisions.json")
         self.write_mapping_to_file(sorted_dots, "sorted_dots.json")
@@ -163,6 +228,88 @@ class NumberDots(EffectExtension):
                     "fill": "none",
                 }
             )
+
+    def add_title(self, title: str):
+        text_layer = self.svg.getElementById("text_layer")
+        title_element = TextElement(x="50", y="885", id="puzzle_title_textbox")
+        title_element.text = title
+        title_element.style = Style(
+            {
+                "font-family": "Consolas",
+                "fill-opacity": "1.0",
+                "fill": "#000000",
+                "font-size": "20px",
+                "font-weight": "bold",
+            }
+        )
+        text_layer.append(title_element)
+
+    def add_copy_right(self):
+        text_layer = self.svg.getElementById("text_layer")
+        copy_right = TextElement(x="634", y="1040", id="copy_right_textbox")
+        copy_right.text = "Copyright © Polydot Puzzles 2024"
+        copy_right.style = Style(
+            {
+                "font-family": "Garamond",
+                "fill-opacity": "1.0",
+                "fill": "#000000",
+                "font-size": "8px",
+            }
+        )
+        text_layer.append(copy_right)
+
+    def add_level_of_difficulty(self, level: int):
+        grouped_stars = Group()
+        grouped_stars.set("id", "grouped_stars")
+        self.svg.getElementById("text_layer").append(grouped_stars)
+        text_layer = self.svg.getElementById("text_layer")
+        for i in range(5):
+            rating_star_path = "m 73.77 112.6575 l -5.835 -3.15 l -6.135 3.15 l 1.3275 -6.6225 l -4.8075 -4.9425 l 6.735 -0.855 l 2.955 -6.1125 l 2.91 6.0975 l 6.66 1.0875 l -4.8975 4.575 z"
+
+            rating_star = PathElement(id=f"rating_star_{i}")
+            rating_star.set("d", rating_star_path)
+            rating_star.set("transform", f"translate({150 + (i * 20)}, 775)")
+
+            if i < level:
+                rating_star.style = Style(
+                    {
+                        "stroke": "#000000",
+                        "stroke-width": "1pt",
+                        "fill": "#000000",
+                        "stroke-linecap": "round",
+                        "stroke-linejoin": "round",
+                    }
+                )
+            else:
+                rating_star.style = Style(
+                    {
+                        "stroke": "#000000",
+                        "stroke-width": "1pt",
+                        "fill": "#ffffff",
+                        "stroke-linecap": "round",
+                        "stroke-linejoin": "round",
+                    }
+                )
+
+            grouped_stars.append(rating_star)
+        text_layer.append(grouped_stars)
+
+    def remove_layers(self, so):
+        if so.replace_dots:
+            self.remove_layer("puzzle_dots")
+
+        if so.replace_centroids:
+            self.remove_layer("puzzle_centroids")
+
+        if so.replace_text:
+            self.remove_layer("text_layer")
+
+    def remove_layer(self, id):
+        """Remove layers for puzzle planes, dots, and text"""
+        layer = self.svg.getElementById(id)
+
+        if layer is not None:
+            self.svg.remove(layer)
 
     def create_layers(self):
         """Create layers for puzzle planes, dots, and text"""
@@ -203,11 +350,14 @@ class NumberDots(EffectExtension):
         return avg_distance, lowest_distance, highest_distance
 
     def count_planes(self):
+        processed_planes = self.svg.getElementById("puzzle_planes")
+
         xpath_query = ".//*[@style and contains(@style, 'fill:#ff0000')]"
         red_planes = self.svg.xpath(xpath_query)
-        if not red_planes:
-            return 0
-        return len(red_planes)
+        number_of_red_planes = len(red_planes) if red_planes is not None else 0
+        number_of_planes = len(processed_planes) if processed_planes is not None else 0
+
+        return number_of_planes or number_of_red_planes
 
     def plot_puzzle_centroids(self, target_fill="#ff0000"):
         xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
@@ -447,6 +597,36 @@ class NumberDots(EffectExtension):
             "#000000",  # Black
         )
 
+    def plot_random_sequence_pairs(self, mapping: list):
+        """Plot the mapping to the canvas as a sequence of shuffled pairs"""
+
+        pairs = []
+
+        for index, item in enumerate(mapping):
+            if index != 0:
+                pairs.append(
+                    f"{mapping[index-1]['letter_label']}-{item['letter_label']}"
+                )
+
+        random.shuffle(pairs)
+        sequence_string = " ".join(pairs)
+
+        x_pos = 49
+        y_pos = 929
+        width = 677
+        height = 113
+
+        return self.add_text_in_rect(
+            x_pos,
+            y_pos,
+            width,
+            height,
+            sequence_string,
+            "sequence_string_textbox_extreme",
+            "sequence_string_rect_extreme",
+            "#000000",  # Black
+        )
+
     def plot_compact_mapping(self, mapping: list):
         """Plot the mapping to the canvas"""
         sequence_string = ""
@@ -482,7 +662,8 @@ class NumberDots(EffectExtension):
         precision = self.options.precision
 
         for node in nodes:
-            path_trans_applied = node.path.transform(node.composed_transform())
+            path: Path = node.path
+            path_trans_applied = path.transform(node.composed_transform())
 
             previous_point = None
 
