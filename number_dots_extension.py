@@ -46,7 +46,6 @@ class NumberDots(EffectExtension):
             default=3,
             help="Co-align the dots within the specified distance",
         )
-
         pars.add_argument("--fontsize", default="8px", help="Size of node labels")
         pars.add_argument(
             "--fontweight", default="normal", help="Weight of node labels"
@@ -168,6 +167,12 @@ class NumberDots(EffectExtension):
         self.fontStyle["font-weight"] = so.fontweight
         self.fontStyle["font-size"] = self.svg.unittouu(so.fontsize)
         self.fontsize = self.svg.unittouu(so.fontsize)
+        page_dimensions = self.svg.get("width"), self.svg.get("height")  # Get page size
+        isA4 = page_dimensions == ("210mm", "297mm")  # Check if the page is A4
+        isUsLetter = page_dimensions == (
+            "8.5in",
+            "11in",
+        )  # Check if the page is US Letter
 
         # find selected path element
         selected_path: PathElement = self.svg.selection.filter(PathElement)
@@ -215,7 +220,7 @@ class NumberDots(EffectExtension):
         unique_dots = self.get_unique_dots(dot_connections)
 
         self.annotate_source_page("puzzle_page", "Puzzle")
-        self.append_instructions_page("puzzle_instructions", "Instructions")
+        self.prepend_instructions_page("puzzle_instructions", "Instructions")
         self.process_puzzle_path(selected_path, solution_layer_id)
 
         # Plot the Puzzle Dots and Centroids
@@ -233,6 +238,7 @@ class NumberDots(EffectExtension):
         # Add copyright
         if so.plot_copyright:
             self.plot_copyright(so.copyright_text, instructions_layer_id)
+            self.plot_paper_size(isA4, isUsLetter, instructions_layer_id)
 
         self.plot_title(so.title, instructions_layer_id)
         self.plot_difficulty_level(dot_connections, instructions_layer_id)
@@ -262,7 +268,7 @@ class NumberDots(EffectExtension):
                 instructions_layer_id,
             )
 
-        instructions_layer.transform = "translate(800, -350)"
+        instructions_layer.transform = "translate(-800, -350)"
 
         # Combine mappings and write data to a file
         current_file_name = self.svg.get("sodipodi:docname", "")  # Get doc name
@@ -300,13 +306,13 @@ class NumberDots(EffectExtension):
         page.set("id", page_id)
         page.set("inkscape:label", page_label)
 
-    def append_instructions_page(self, page_id, page_label):
+    def prepend_instructions_page(self, page_id, page_label):
         doc_width = self.svg.get("width")
         doc_height = self.svg.get("height")
         converted_width = self.svg.unittouu(doc_width)
         converted_height = self.svg.unittouu(doc_height)
 
-        x_shift = converted_width + 20
+        x_shift = -(converted_width + 20)
         y_shift = 0
 
         newpage = self.svg.namedview.new_page(
@@ -350,6 +356,32 @@ class NumberDots(EffectExtension):
             }
         )
         layer.append(copyright)
+
+    def plot_paper_size(self, isA4, isUsLetter, layer_id):
+        layer = self.svg.getElementById(layer_id)
+        paper_size = TextElement(x="634", y="1050", id="paper_size_textbox")
+
+        if isA4:
+            paper_size.text = "A4 | 210mm x 297mm"
+        elif isUsLetter:
+            paper_size.text = "US Letter | 8.5in x 11in"
+        else:
+            paper_size.text = (
+                "Custom Size | "
+                + self.svg.get("width")
+                + " x "
+                + self.svg.get("height")
+            )
+
+        paper_size.style = Style(
+            {
+                "font-family": "Garamond",
+                "fill-opacity": "1.0",
+                "fill": "#000000",
+                "font-size": "8px",
+            }
+        )
+        layer.append(paper_size)
 
     def plot_difficulty_level(self, dot_connections, layer_id):
         # Calculate the difficulty level based on the number of steps
