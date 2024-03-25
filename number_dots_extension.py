@@ -216,6 +216,7 @@ class NumberDots(EffectExtension):
 
         self.annotate_source_page("puzzle_page", "Puzzle")
         self.append_instructions_page("puzzle_instructions", "Instructions")
+        self.process_puzzle_path(selected_path, solution_layer_id)
 
         # Plot the Puzzle Dots and Centroids
         if so.plot_dots:
@@ -248,6 +249,7 @@ class NumberDots(EffectExtension):
         # Plot the reference sequence
         if so.plot_reference_sequence:
             self.plot_reference_sequence()
+
         if so.plot_stats:
             # Print statistics
             self.plot_stats(
@@ -260,7 +262,9 @@ class NumberDots(EffectExtension):
                 instructions_layer_id,
             )
 
-        # Combine mappings and write to a file
+        instructions_layer.transform = "translate(800, -350)"
+
+        # Combine mappings and write data to a file
         current_file_name = self.svg.get("sodipodi:docname", "")  # Get doc name
         output_name = current_file_name.split(".")[0]  # Remove the file extension
 
@@ -276,7 +280,6 @@ class NumberDots(EffectExtension):
 
         # Write combined mappings to a single JSON file
         self.write_mappings_to_file(mappings, f"{output_name}_combined_mappings.json")
-        self.process_puzzle_path(selected_path, solution_layer_id)
 
     def process_puzzle_path(self, selected_path, layer_id):
         # Set the style of the path

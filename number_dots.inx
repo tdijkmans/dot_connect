@@ -45,7 +45,7 @@
 
             <label appearance="header">Analysis configuration</label>
             <param name="plot_stats" type="bool" gui-text="Add stats"
-                gui-description="If checked, the stats will be added to the output.">true</param>
+                gui-description="If checked, the stats will be added to the output.">false</param>
             <separator />
 
             <label appearance="header">Replace existing elements.</label>
