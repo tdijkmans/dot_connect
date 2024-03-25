@@ -29,8 +29,6 @@ class NumberDots(EffectExtension):
         "abcdefghijklmnopqrstuvwxyz" + "1234567890" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     )
     fontsize = ""
-    text_layer: Layer = None
-
     fontStyle = Style(
         {
             "font-family": "Consolas",
@@ -178,25 +176,30 @@ class NumberDots(EffectExtension):
             raise AbortExtension(_("Please select at least one path object."))
 
         # Create layers for puzzle planes, dots, and text
-        text_layer_layer = "text_layer"
-        puzzle_dots_layer = "puzzle_dots_layer"
-        puzzle_planes_layer = "puzzle_planes_layer"
-        solution_layer = "solution_layer"
+        instructions_layer_id = "instructions_layer"
+        dots_layer_id = "dots_layer"
+        centroids_layer_id = "centroids_layer"
+        solution_layer_id = "solution_layer"
 
         # Remove layers for puzzle planes, dots, and text if the option is set
         if so.replace_dots:
-            self.remove_layer(puzzle_dots_layer)
+            self.remove_layer(dots_layer_id)
 
         if so.replace_centroids:
-            self.remove_layer(puzzle_planes_layer)
+            self.remove_layer(centroids_layer_id)
 
         if so.replace_text:
-            self.remove_layer(text_layer_layer)
+            self.remove_layer(instructions_layer_id)
 
         self.create_layers(
-            [solution_layer, puzzle_planes_layer, puzzle_dots_layer, text_layer_layer]
+            [
+                solution_layer_id,
+                centroids_layer_id,
+                dots_layer_id,
+                instructions_layer_id,
+            ]
         )
-        text_layer = self.svg.getElementById(text_layer_layer)
+        instructions_layer: Layer = self.svg.getElementById(instructions_layer_id)
 
         # Create a mapping of letter IDs, numbers, and coordinates
         # Also check for collisions and calculate distances
@@ -208,7 +211,7 @@ class NumberDots(EffectExtension):
             sorted_dots
         )
         compact_mapping = self.compress_mapping(dot_connections)
-        planes = self.count_planes(puzzle_planes_layer)
+        planes = self.count_planes(centroids_layer_id)
         unique_dots = self.get_unique_dots(dot_connections)
 
         self.annotate_source_page("puzzle_page", "Puzzle")
@@ -216,32 +219,32 @@ class NumberDots(EffectExtension):
 
         # Plot the Puzzle Dots and Centroids
         if so.plot_dots:
-            self.plot_puzzle_dots(dot_connections, collisions, puzzle_dots_layer)
+            self.plot_puzzle_dots(dot_connections, collisions, dots_layer_id)
         # Plot centroids in filled elements
         if so.plot_centroids:
-            self.plot_puzzle_centroids(puzzle_planes_layer, solution_layer)
+            self.plot_puzzle_centroids(centroids_layer_id, solution_layer_id)
 
         # Plot the Instructions
         if so.plot_sequence:
             sequenceElement = self.plot_letter_sequence(dot_connections)
-            text_layer.append(sequenceElement)
+            instructions_layer.append(sequenceElement)
 
         # Add copyright
         if so.plot_copyright:
-            self.plot_copyright(so.copyright_text, text_layer_layer)
+            self.plot_copyright(so.copyright_text, instructions_layer_id)
 
-        self.plot_title(so.title, text_layer_layer)
-        self.plot_difficulty_level(dot_connections, text_layer_layer)
+        self.plot_title(so.title, instructions_layer_id)
+        self.plot_difficulty_level(dot_connections, instructions_layer_id)
 
         # ADVANCED OPTIONS
         # Plot the sequence as pairs
         if so.extreme_difficulty:
             pairs = self.plot_random_sequence_pairs(dot_connections)
-            text_layer.append(pairs)
+            instructions_layer.append(pairs)
         # Plot the compact sequence
         if so.plot_compact_sequence:
             compact_sequence = self.plot_compact_mapping(compact_mapping)
-            text_layer.append(compact_sequence)
+            instructions_layer.append(compact_sequence)
         # Plot the reference sequence
         if so.plot_reference_sequence:
             self.plot_reference_sequence()
@@ -254,7 +257,7 @@ class NumberDots(EffectExtension):
                 lowest_distance,
                 highest_distance,
                 planes,
-                text_layer_layer,
+                instructions_layer_id,
             )
 
         # Combine mappings and write to a file
@@ -273,7 +276,7 @@ class NumberDots(EffectExtension):
 
         # Write combined mappings to a single JSON file
         self.write_mappings_to_file(mappings, f"{output_name}_combined_mappings.json")
-        self.process_puzzle_path(selected_path, solution_layer)
+        self.process_puzzle_path(selected_path, solution_layer_id)
 
     def process_puzzle_path(self, selected_path, layer_id):
         # Set the style of the path
@@ -421,7 +424,7 @@ class NumberDots(EffectExtension):
         return number_of_planes or number_of_red_planes
 
     def plot_puzzle_centroids(
-        self, puzzle_planes_layer, solutions_layer, target_fill="#ff0000"
+        self, centroids_layer, solutions_layer, target_fill="#ff0000"
     ):
         xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
         red_planes = self.svg.xpath(xpath_query)
@@ -454,7 +457,7 @@ class NumberDots(EffectExtension):
                 f"plane_centroid_label_{id}",
                 "#000000",  # Black
             )
-            self.svg.getElementById(puzzle_planes_layer).append(text_element)
+            self.svg.getElementById(centroids_layer).append(text_element)
 
             plane.set("id", f"source_plane_{id}")
             plane.style = Style(
@@ -603,7 +606,7 @@ class NumberDots(EffectExtension):
                     break
 
             # Add the text label
-            text_element_with_label = self.svg.getElementById("text_layer").add(
+            text_element_with_label = self.svg.getElementById(layer_id).add(
                 TextElement(x=str(x_center), y=str(y_center))
             )
             # make the text center horitzontally
