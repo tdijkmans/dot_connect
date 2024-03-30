@@ -10,6 +10,7 @@ from inkex import (
     Circle,
     EffectExtension,
     Group,
+    Guide,
     Layer,
     PathElement,
     Rectangle,
@@ -18,9 +19,7 @@ from inkex import (
     Tspan,
 )
 from inkex.localization import inkex_gettext as _
-from inkex.paths import Line, Move, Path
-
-from NeigborFinder import NearNeighborFinder
+from inkex.paths import Path
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
@@ -44,18 +43,17 @@ class NumberDots(EffectExtension):
         """Add command-line arguments for the extension"""
         pars.add_argument("--fontsize", default="8px", help="Size of node labels")
         pars.add_argument(
+            "--page_margin",
+            default="7mm 7mm 7mm 7mm",
+            help="Page margin. Default is 7mm",
+        )
+        pars.add_argument(
             "--fontweight", default="normal", help="Weight of node labels"
         )
         pars.add_argument(
             "--start", type=int, default=1, help="First number in the sequence"
         )
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
-        pars.add_argument(
-            "--neighbor_radius",
-            type=int,
-            default=1,
-            help="Neighbor_radius for coordinates; higher value represents lower resolution",
-        )
 
         pars.add_argument(
             "--extreme_difficulty",
@@ -109,9 +107,9 @@ class NumberDots(EffectExtension):
         # have a minimal distance between dots
         pars.add_argument(
             "--minimal_distance",
-            type=int,
+            type=float,
             help="Minimal distance between dots",
-            default=6,
+            default=6.0,
         )
 
         pars.add_argument(
@@ -143,7 +141,7 @@ class NumberDots(EffectExtension):
         )
 
         pars.add_argument(
-            "--plot_copyright",
+            "--plot_footer",
             type=Boolean,
             help="Add copyright",
             default=False,
@@ -163,30 +161,27 @@ class NumberDots(EffectExtension):
         self.fontStyle["font-weight"] = so.fontweight
         self.fontStyle["font-size"] = self.svg.unittouu(so.fontsize)
         self.fontsize = self.svg.unittouu(so.fontsize)
-        page_dimensions = self.svg.get("width"), self.svg.get("height")  # Get page size
-        isA4 = page_dimensions == ("210mm", "297mm")  # Check if the page is A4
-        isUsLetter = page_dimensions == (
-            "8.5in",
-            "11in",
-        )  # Check if the page is US Letter
+        paper_size = self.get_paper_size_info(self.svg)
 
         # find selected path element
-        selectedElements: list = self.svg.selection.filter(PathElement)
+        selectedElements: list = self.svg.selection.filter(PathElement) or [
+            self.svg.getElementById("source_path")
+        ]
 
         if selectedElements is None:
             raise AbortExtension(_("Please select at least one path object."))
         if len(selectedElements) > 1:
             raise AbortExtension(_("Please select only one path object."))
 
-        # Get the path data
-        for element in selectedElements:
-            self.find_neighbors(element, so.neighbor_radius)
+        # Clean up defs from previous runs
+        self.svg.defs.clear()
 
         # Create layers for puzzle planes, dots, and text
         instructions_layer_id = "instructions_layer"
         dots_layer_id = "dots_layer"
         centroids_layer_id = "centroids_layer"
         solution_layer_id = "solution_layer"
+        stats_layer_id = "stats_layer"
 
         # Remove layers for puzzle planes, dots, and text if the option is set
         if so.replace_dots:
@@ -198,20 +193,25 @@ class NumberDots(EffectExtension):
         if so.replace_text:
             self.remove_layer(instructions_layer_id)
 
-        self.create_layers(
-            [
-                solution_layer_id,
-                centroids_layer_id,
-                dots_layer_id,
-                instructions_layer_id,
-            ]
-        )
+        self.remove_layer(stats_layer_id)
+
+        layers_to_create = [
+            solution_layer_id,
+            centroids_layer_id,
+            dots_layer_id,
+            instructions_layer_id,
+        ]
+
+        if so.plot_stats:
+            layers_to_create.append(stats_layer_id)
+
+        self.create_layers(layers_to_create)
         instructions_layer: Layer = self.svg.getElementById(instructions_layer_id)
 
         # Create a mapping of letter IDs, numbers, and coordinates
         # Also check for collisions and calculate distances
         dot_connections = self.create_mapping(selectedElements)
-        collisions, sorted_dots = self.check_density(
+        collisions, sorted_dots, all_distances = self.check_density(
             dot_connections, so.minimal_distance
         )
         avg_distance, lowest_distance, highest_distance = self.evaluate_distances(
@@ -219,10 +219,13 @@ class NumberDots(EffectExtension):
         )
         compact_mapping = self.compress_mapping(dot_connections)
         planes = self.count_planes(centroids_layer_id)
-        unique_dots = self.get_unique_dots(dot_connections)
 
-        self.annotate_source_page("puzzle_page", "Puzzle")
-        self.prepend_instructions_page("puzzle_instructions", "Instructions")
+        self.annotate_source_page("puzzle_page", "Puzzle", so.page_margin)
+        instructions_guide = self.prepend_instructions_page(
+            "puzzle_instructions", "Instructions", so.page_margin
+        )
+        x_guide, y_guide = instructions_guide.position
+
         self.process_puzzle_path(selectedElements, solution_layer_id)
 
         # Plot the Puzzle Dots and Centroids
@@ -234,16 +237,27 @@ class NumberDots(EffectExtension):
 
         # Plot the Instructions
         if so.plot_sequence:
-            sequenceElement = self.plot_letter_sequence(dot_connections)
+            sequenceElement = self.plot_letter_sequence(
+                dot_connections,
+                x_guide,
+                y_guide + 150,
+            )
             instructions_layer.append(sequenceElement)
 
-        # Add copyright
-        if so.plot_copyright:
-            self.plot_copyright(so.copyright_text, instructions_layer_id)
-            self.plot_paper_size(isA4, isUsLetter, instructions_layer_id)
+        # Add footer
+        if so.plot_footer:
+            self.plot_footer(
+                so.copyright_text,
+                instructions_layer_id,
+                x_guide,
+                y_guide + 1000,
+                paper_size,
+            )
 
-        self.plot_title(so.title, instructions_layer_id)
-        self.plot_difficulty_level(dot_connections, instructions_layer_id)
+        self.plot_title(so.title, instructions_layer_id, x_guide, y_guide + 100)
+        self.plot_difficulty_level(
+            dot_connections, instructions_layer_id, x_guide + 500, y_guide + 100
+        )
 
         # ADVANCED OPTIONS
         # Plot the sequence as pairs
@@ -256,38 +270,37 @@ class NumberDots(EffectExtension):
             instructions_layer.append(compact_sequence)
         # Plot the reference sequence
         if so.plot_reference_sequence:
-            self.plot_reference_sequence()
-
-        if so.plot_stats:
-            # Print statistics
-            self.plot_stats(
-                dot_connections,
-                len(unique_dots),
-                avg_distance,
-                lowest_distance,
-                highest_distance,
-                planes,
-                instructions_layer_id,
-            )
-
-        instructions_layer.transform = "translate(-800, -350)"
+            self.plot_reference_sequence(x_guide, y_guide)
 
         # Combine mappings and write data to a file
         current_file_name = self.svg.get("sodipodi:docname", "")  # Get doc name
         output_name = current_file_name.split(".")[0]  # Remove the file extension
 
-        sequenceString = self.svg.getElementById("sequence_string_textbox_tspan").text
+        unique_dots = self.get_unique_dots(dot_connections)
+        sequence = self.svg.getElementById("sequence_string_textbox_tspan").text
         mappings = {
             "collisions": collisions,
             "sorted_dots": sorted_dots,
             "dot_connections": dot_connections,
             "compact_mapping": compact_mapping,
-            "sequence": sequenceString,
-            "stats": f"{len(dot_connections)} steps, {len(sorted_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes",
+            "sequence": sequence,
+            "stats": f"{len(dot_connections)} steps, {len(unique_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes",
         }
 
-        # Write combined mappings to a single JSON file
-        self.write_mappings_to_file(mappings, f"{output_name}_combined_mappings.json")
+        # Perform analysis and plot stats
+        if so.plot_stats:
+            self.append_stats_page(
+                "puzzle_stats",
+                "Stats",
+                so.page_margin,
+                mappings["stats"],
+                all_distances,
+                sequence,
+            )
+            # Write combined mappings to a single JSON file
+            self.write_mappings_to_file(
+                mappings, f"{output_name}_combined_mappings.json"
+            )
 
     def process_puzzle_path(self, selected_path, layer_id):
         # Set the style of the path
@@ -303,12 +316,13 @@ class NumberDots(EffectExtension):
             layer = self.svg.getElementById(layer_id)
             layer.append(puzzle_path)
 
-    def annotate_source_page(self, page_id, page_label):
+    def annotate_source_page(self, page_id, page_label, page_margin):
         page = self.document.xpath("//inkscape:page", namespaces=inkex.NSS)[0]
         page.set("id", page_id)
         page.set("inkscape:label", page_label)
+        page.set("margin", page_margin)
 
-    def prepend_instructions_page(self, page_id, page_label):
+    def prepend_instructions_page(self, page_id, page_label, page_margin):
         doc_width = self.svg.get("width")
         doc_height = self.svg.get("height")
         converted_width = self.svg.unittouu(doc_width)
@@ -326,10 +340,181 @@ class NumberDots(EffectExtension):
         )
 
         newpage.set("id", page_id)
+        newpage.set("margin", page_margin)
 
-    def plot_title(self, title: str, layer_id):
+        left_guide: Guide = self.svg.namedview.add_guide(
+            (-(converted_width - 25), 0), (1, 0), "Sequence guide left"
+        )
+        left_guide.set("id", "sequence_guide_left")
+
+        right_guide: Guide = self.svg.namedview.add_guide(
+            (-100, 0), (1, 0), "Sequence guide right"
+        )
+
+        right_guide.set("id", "sequence_guide_right")
+
+        return left_guide
+
+    def append_stats_page(
+        self, page_id, page_label, page_margin, stats, all_distances, connections_str
+    ):
+        doc_width = self.svg.get("width")
+        doc_height = self.svg.get("height")
+        converted_width = self.svg.unittouu(doc_width)
+        converted_height = self.svg.unittouu(doc_height)
+
+        x_shift = converted_width + 20
+        y_shift = 0
+
+        newpage = self.svg.namedview.new_page(
+            str(x_shift),
+            str(-y_shift),
+            str(converted_width),
+            str(converted_height),
+            page_label,
+        )
+        newpage.set("id", page_id)
+        newpage.set("margin", page_margin)
+
+        new_guide: Guide = self.svg.namedview.add_guide(
+            ((converted_width + 100), 0), (1, 0), "Stats guide"
+        )
+        new_guide.set("id", "stats_guide")
+        x_guide, y_guide = new_guide.position
+
+        self.svg.getElementById("stats_layer").append(
+            self.add_text_in_rect(
+                stats,
+                "mapping_textbox",
+                "mapping_rect",
+                x_guide,
+                y_guide + 50,
+                width="698",
+                height="1000",
+                font_size="10px",
+            )
+        )
+
+        self.make_histogram(all_distances, 10, x_guide, y_guide + 100)
+        self.make_connections_histogram(connections_str, x_guide, y_guide + 350)
+
+        return new_guide
+
+    def make_histogram(self, distances, num_bins=10, x=0, y=0):
+        # Find the minimum and maximum distances
+        min_distance = min(distances)
+        max_distance = max(distances)
+
+        # Calculate the bin width
+        bin_width = (max_distance - min_distance) / num_bins
+
+        # Initialize distance bins
+        distance_bins = {min_distance + i * bin_width: 0 for i in range(num_bins)}
+
+        # Count occurrences within each bin
+        for distance in distances:
+            for bin_start, bin_end in distance_bins.items():
+                if bin_start <= distance < bin_start + bin_width:
+                    distance_bins[bin_start] += 1
+
+        # Create a group for the histogram
+        histogram_group = self.svg.add(Group())
+        histogram_group.set("id", "histogram_group")
+
+        # Append text elements for each bin to stats_layer
+        y_pos = y
+        for distance, count in sorted(distance_bins.items()):
+            bin_width_text = f"{round(distance)} - {round(distance + bin_width)}"
+            histogram_text = "|" * count
+
+            self.svg.getElementById("histogram_group").append(
+                self.add_text_in_rect(
+                    f"{bin_width_text} {histogram_text}",
+                    f"distance_textbox_{round(distance)}",  # Unique ID for each text element
+                    f"distance_rect_{round(distance)}",  # Unique ID for each rectangle
+                    x,
+                    y_pos,
+                    width="700",
+                    height="1000",
+                    font_size="8px",
+                )
+            )
+            y_pos += 20  # Increase y coordinate for next appended element
+
+            self.svg.getElementById("stats_layer").append(histogram_group)
+
+    def make_connections_histogram(self, connections_str, x=0, y=0):
+        text_element = TextElement(
+            x="",
+            y="",
+            id="connections_textbox",
+        )
+        text_element.style = Style(
+            {
+                "font-family": "Consolas",
+                "font-size": "10pt",
+            }
+        )
+        connections_count = {}
+
+        # Split the sequence into individual connections
+        connections = connections_str.split()
+        singular_connections = 0
+        non_singular_connections = 0
+
+        # Iterate over each connection
+        for i in range(len(connections) - 1):
+            connection = sorted([connections[i], connections[i + 1]])
+            connection = " ".join(connection)
+
+            # Count the occurrence of the connection
+            connections_count[connection] = connections_count.get(connection, 0) + 1
+
+            if connections_count[connection] == 1:
+                singular_connections += 1
+
+        # Sort connections by totals in descending order
+        sorted_connections = sorted(
+            connections_count.items(), key=lambda x: x[1], reverse=True
+        )
+
+        # Plotting connections after all iterations
+        for connection, count in sorted_connections:
+            if count > 1:
+                non_singular_connections += 1
+                text_element.append(
+                    Tspan(
+                        f"{connection} : {count * '•'}\n",
+                        x=str(x),
+                        y=str(y + non_singular_connections * 20),
+                        id=f"connection_{connection}",
+                    )
+                )
+
+        text_element.append(
+            Tspan(
+                f"Non-singular connections: {non_singular_connections}\n",
+                x=str(x),
+                y=str(y + (non_singular_connections + 1) * 20),
+                id=f"non_singular_connections_{non_singular_connections}",
+                font_weight="bold",
+            )
+        )
+        text_element.append(
+            Tspan(
+                f"Singular connections: {singular_connections}\n",
+                x=str(x),
+                y=str(y),
+                id=f"singular_connections_{singular_connections}",
+                font_weight="bold",
+            )
+        )
+
+        self.svg.getElementById("stats_layer").append(text_element)
+
+    def plot_title(self, title: str, layer_id, x_guide, y_guide):
         layer = self.svg.getElementById(layer_id)
-        title_element = TextElement(x="50", y="885", id="puzzle_title_textbox")
+        title_element = TextElement(x=str(x_guide), y=str(y_guide), id="title_textbox")
 
         # Set the title of the puzzle as the filename if not provided
         title = title or self.svg.get("sodipodi:docname", "").split(".")[0]
@@ -345,11 +530,18 @@ class NumberDots(EffectExtension):
         )
         layer.append(title_element)
 
-    def plot_copyright(self, copyright_text: str, layer_id):
+    def plot_footer(
+        self,
+        copyright_text: str,
+        layer_id,
+        x_guide,
+        y_guide,
+        paper_size="A4",
+    ):
         layer = self.svg.getElementById(layer_id)
-        copyright = TextElement(x="634", y="1040", id="copyright_textbox")
-        copyright.text = copyright_text
-        copyright.style = Style(
+        footerText = TextElement(x=str(x_guide), y=str(y_guide), id="footer_textbox")
+        footerText.text = copyright_text + " | " + paper_size
+        footerText.style = Style(
             {
                 "font-family": "Garamond",
                 "fill-opacity": "1.0",
@@ -357,35 +549,21 @@ class NumberDots(EffectExtension):
                 "font-size": "8px",
             }
         )
-        layer.append(copyright)
+        layer.append(footerText)
 
-    def plot_paper_size(self, isA4, isUsLetter, layer_id):
-        layer = self.svg.getElementById(layer_id)
-        paper_size = TextElement(x="634", y="1050", id="paper_size_textbox")
+    def get_paper_size_info(self, svg):
+        """Extracts dimensions from SVG and determines the paper size."""
+        width_in_mm = round(float(svg.get("width").replace("mm", "")))
+        height_in_mm = round(float(svg.get("height").replace("mm", "")))
 
-        if isA4:
-            paper_size.text = "A4 | 210mm x 297mm"
-        elif isUsLetter:
-            paper_size.text = "US Letter | 8.5in x 11in"
+        if (width_in_mm, height_in_mm) == (210, 297):
+            return "A4"
+        elif (width_in_mm, height_in_mm) == (216, 279):
+            return "US Letter"
         else:
-            paper_size.text = (
-                "Custom Size | "
-                + self.svg.get("width")
-                + " x "
-                + self.svg.get("height")
-            )
+            return "Custom Size"
 
-        paper_size.style = Style(
-            {
-                "font-family": "Garamond",
-                "fill-opacity": "1.0",
-                "fill": "#000000",
-                "font-size": "8px",
-            }
-        )
-        layer.append(paper_size)
-
-    def plot_difficulty_level(self, dot_connections, layer_id):
+    def plot_difficulty_level(self, dot_connections, layer_id, x, y):
         # Calculate the difficulty level based on the number of steps
         level = (len(dot_connections) // 200) + 1
         grouped_brains = Group()
@@ -395,20 +573,20 @@ class NumberDots(EffectExtension):
         layer = self.svg.getElementById(layer_id)
 
         for i in range(5):
-            brain_character = TextElement(id=f"brain_character_{i}", y="885")
-            brain_character.text = "🧠"
-            brain_character.set("font-size", "20px")
-            brain_character.set("x", str(150 + (i * 25)))
-            brain_character.set("fill", "#000000")
+            brain_character = PathElement(id=f"brain_character_{i}")
+            brain_character.path = Path(
+                "m 15.3568 5.4864 q 0.2066 -0.2066 0.2066 -0.5016 q 0 -0.2949 -0.2066 -0.5016 q -0.4719 -0.4719 -1.1211 -0.7474 q -0.6393 -0.285 -1.367 -0.285 q -0.7276 0 -1.3666 0.285 q -0.6393 0.2751 -1.1112 0.7474 q -0.2066 0.2066 -0.2066 0.5016 q 0 0.2949 0.2066 0.5016 q 0.2066 0.2066 0.4917 0.2066 q 0.2949 0 0.5115 -0.2066 q 0.6097 -0.6097 1.475 -0.6097 q 0.8654 0 1.4849 0.6097 q 0.2066 0.2066 0.5016 0.2066 q 0.2949 0 0.5016 -0.2066 z m -8.2304 -0.6785 q 0.2557 -0.1477 0.5408 -0.0689 q 0.285 0.0689 0.4327 0.3246 q 0.1477 0.2557 0.0689 0.5408 q -0.0689 0.2755 -0.3246 0.4327 q -0.7569 0.4327 -1.3472 1.0914 q -0.5899 0.6489 -0.9537 1.4454 q -0.3737 0.8159 -0.4719 1.711 q -0.0304 0.2949 -0.2656 0.4818 q -0.2261 0.177 -0.521 0.1477 q -0.285 -0.0304 -0.4719 -0.2557 q -0.1869 -0.2359 -0.1477 -0.5309 q 0.118 -1.1211 0.5899 -2.1437 q 0.4521 -0.9933 1.1896 -1.8092 l 0.0023 0.0004 q 0.7375 -0.8159 1.6813 -1.3666 z m 10.7082 7.9157 q 0 0.4426 -0.3147 0.7569 q -0.3147 0.3048 -0.7474 0.3048 l -2.7324 0.0013 q 0.2458 -0.521 0.2458 -1.0618 q 0 -0.2949 -0.2066 -0.5016 q -0.2066 -0.2066 -0.5016 -0.2066 q -0.285 0 -0.5016 0.2066 q -0.2066 0.2066 -0.2066 0.5016 q 0 0.4426 -0.3147 0.7569 q -0.3048 0.3048 -0.7474 0.3048 h -1.5424 q -0.2949 0 -0.5016 0.2066 q -0.2066 0.2066 -0.2066 0.5016 q 0 0.2949 0.2066 0.5016 q 0.2066 0.2066 0.5016 0.2066 l 4.3764 -0.0008 q 0.4426 0 0.7474 0.3147 q 0.3147 0.3147 0.3246 0.7474 q 0 0.2949 0.2066 0.5111 q 0.2066 0.2066 0.5016 0.2066 q 0.285 0 0.4917 -0.2066 q 0.2162 -0.2162 0.2162 -0.5111 q 0 -0.5507 -0.2557 -1.0717 q 0.6587 -0.019 1.1995 -0.3539 q 0.5408 -0.344 0.8555 -0.8947 q 0.3246 -0.5507 0.3246 -1.2193 q 0 -0.2949 -0.2066 -0.5016 q -0.2066 -0.2066 -0.5016 -0.2066 q -0.2949 0 -0.5016 0.2066 q -0.2066 0.2066 -0.2066 0.5016 z m 5.6639 -0.5606 l 0.0023 1.6235 q 0 0.0304 0 0.0788 q -0.0114 0.0392 -0.0114 0.0689 q 0.0114 0.059 0.0114 0.0788 q 0 0.0887 0 0.1279 q 0 0.0689 -0.0392 0.2066 l -0.0027 0.0023 q -0.0304 0.2755 -0.0788 0.5408 q -0.0392 0.2656 -0.118 0.521 q -0.3147 1.0621 -1.0028 1.9173 q -0.6785 0.8456 -1.6421 1.3864 q -0.9537 0.5408 -2.0748 0.6884 l 0.0034 1.8876 q 0 0.3539 -0.3345 0.4917 q -0.3246 0.1378 -0.5705 -0.118 l -2.2126 -2.2027 l -5.0378 -0.0015 q -1.0914 0 -2.0257 -0.462 q -0.9244 -0.462 -1.5732 -1.2585 q -0.6393 -0.8064 -0.8753 -1.829 l -0.884 -0.0013 q -1.1603 0 -2.114 -0.5606 q -0.9537 -0.5705 -1.5241 -1.5241 q -0.5705 -0.9636 -0.5705 -2.1239 q 0 -2.2126 0.8258 -4.1397 q 0.8357 -1.937 2.3009 -3.4022 q 1.4652 -1.4652 3.3923 -2.291 q 1.937 -0.8357 4.1496 -0.8357 l 0.8772 0.0011 q 2.1437 0 4.0412 0.7573 q 1.8978 0.7474 3.3824 2.0847 q 1.4945 1.3373 2.4386 3.1271 q 0.9537 1.7898 1.19 3.8741 q 0.0392 0.3147 0.059 0.6393 q 0.019 0.3147 0.019 0.6489 z m -1.593 2.8416 q 0.1477 -0.5016 0.1671 -1.0717 q -0.0392 -0.7474 -0.344 -1.3963 q -0.2949 -0.6587 -0.7866 -1.1504 q -0.5309 -0.5309 -1.2391 -0.8357 q -0.7078 -0.3048 -1.5142 -0.3048 q -0.0689 0 -0.1967 -0.0392 l -0.0091 0.0027 q -0.5998 0.5115 -1.3666 0.8064 q -0.7569 0.2949 -1.6124 0.2949 q -0.2949 0 -0.5111 -0.2066 q -0.2066 -0.2066 -0.2066 -0.5016 q 0 -0.2949 0.2066 -0.5016 q 0.2162 -0.2066 0.5111 -0.2066 q 0.6587 0 1.2391 -0.2458 q 0.58 -0.2557 1.0127 -0.6884 q 0.4327 -0.4327 0.6785 -1.0127 q 0.2557 -0.58 0.2557 -1.2486 q 0 -0.285 0.2066 -0.4917 q 0.2066 -0.2162 0.5016 -0.2162 q 0.2949 0 0.5016 0.2162 q 0.2066 0.2066 0.2066 0.4917 q 0 1.1801 -0.5606 2.2027 q 0.8258 0.1378 1.5534 0.5115 q 0.7276 0.3737 1.3076 0.9343 q -0.3246 -1.6813 -1.1801 -3.1172 q -0.8555 -1.4454 -2.1338 -2.5174 q -1.2783 -1.0717 -2.8614 -1.6619 q -1.5831 -0.5998 -3.363 -0.5998 l -0.878 -0.0011 q -1.9173 0 -3.599 0.7276 q -1.6813 0.7276 -2.9402 1.9861 q -1.2585 1.2585 -1.9861 2.9402 q -0.7276 1.6813 -0.7276 3.599 q 0 0.5804 0.2162 1.0914 q 0.2261 0.5016 0.5998 0.8848 q 0.3836 0.3836 0.8848 0.5998 q 0.5115 0.2162 1.0914 0.2162 l 0.8095 -0.0005 q 0.118 -0.7866 0.462 -1.4849 q 0.344 -0.6979 0.8753 -1.2486 q -0.0788 -0.4327 -0.3935 -0.7474 q -0.2066 -0.2066 -0.2066 -0.5016 q 0 -0.2949 0.2066 -0.5016 q 0.2162 -0.2066 0.5016 -0.2066 q 0.2949 0 0.5016 0.2066 q 0.3539 0.3539 0.58 0.8456 q 0.5309 -0.2949 1.1306 -0.4521 q 0.5998 -0.1572 1.2486 -0.1572 q 0.2949 0 0.5016 0.2066 q 0.2066 0.2066 0.2066 0.5016 q 0 0.2949 -0.2066 0.5016 q -0.2066 0.2066 -0.5016 0.2066 q -0.7375 0 -1.3864 0.285 q -0.6393 0.2751 -1.1211 0.7569 q -0.462 0.462 -0.7375 1.0816 q -0.2656 0.6097 -0.285 1.3076 l -0.0023 0.051 q 0.0788 0.8064 0.5111 1.4652 q 0.4426 0.6587 1.1306 1.0522 q 0.6983 0.3836 1.534 0.3836 l 7.4457 -0.0012 q 0.9636 0 1.7898 -0.3935 q 0.8258 -0.3935 1.4161 -1.0816 q 0.5998 -0.6884 0.8654 -1.5633 z"
+            ).translate(45 + (i * 25) + x, y)
 
-            if i > level:
-                brain_character.set("fill", "#e6e6e6")
+            height = brain_character.path.bounding_box().height
+            brain_character.path = Path(brain_character.path).translate(0, -height)
 
+            brain_character.style = (
+                Style({"fill": "#d3d3d3"}) if i > level else Style({"fill": "#000000"})
+            )
             grouped_brains.append(brain_character)
 
         layer.append(grouped_brains)
-        # move to right side of the page
-        grouped_brains.transform = "translate(450, 0)"
 
     def remove_layer(self, layer_id):
         """Remove layers for puzzle planes, dots, and text"""
@@ -440,7 +618,8 @@ class NumberDots(EffectExtension):
                         break
         sorted_dots = sorted(dots, key=lambda k: k["distance"])
         colliding_dots = [dot for dot in sorted_dots if dot["has_collision"]]
-        return colliding_dots, sorted_dots
+        all_distances = [dot["distance"] for dot in sorted_dots]
+        return colliding_dots, sorted_dots, all_distances
 
     def evaluate_distances(self, sorted_distances):
         num_distances = len(sorted_distances)
@@ -511,7 +690,7 @@ class NumberDots(EffectExtension):
         root_group.transform = "translate(0, 0)"
         return root_group
 
-    def plot_reference_sequence(self):
+    def plot_reference_sequence(self, x_guide, y_guide, width="698", height="113"):
         """Create a reference sequence of the letters"""
         reference_sequence_group = self.createRootGroup("reference_sequence")
 
@@ -520,10 +699,10 @@ class NumberDots(EffectExtension):
 
         # Create a rectangle element
         rect = Rectangle(
-            x="50",
-            y="50",
-            width="698",
-            height="113",
+            x_guide,
+            y_guide,
+            width,
+            height,
             id="reference_sequence_rect",
         )
 
@@ -531,7 +710,9 @@ class NumberDots(EffectExtension):
         self.svg.defs.append(rect)
 
         # Create a text element inside the rectangle
-        text_element = TextElement(x="50", y="50", id="reference_sequence_textbox")
+        text_element = TextElement(
+            x=x_guide, y=y_guide, id="reference_sequence_textbox"
+        )
         text_element.set("shape-inside", f"url(#{rect.get('id')})")
 
         text_element.style = self.fontStyle
@@ -547,14 +728,9 @@ class NumberDots(EffectExtension):
 
         reference_sequence_group.append(
             self.add_text_in_rect(
-                49,
-                50,
-                698,
-                113,
                 reference_sequence,
                 "reference_sequence_textbox",
                 "reference_sequence_rect",
-                "#000000",  # Black
             )
         )
 
@@ -585,26 +761,6 @@ class NumberDots(EffectExtension):
                 unique_dots.append({"x": x, "y": y, "letter_label": letter_label})
 
         return unique_dots
-
-    def plot_stats(
-        self,
-        mapping: list,
-        total_num_dots: int,
-        avg_distance: float,
-        lowest_distance: float,
-        highest_distance: float,
-        planes: int,
-        layer_id,
-    ):
-        """Print statistics about the mapping"""
-        self.svg.getElementById(layer_id).append(
-            self.add_text(
-                50,
-                1053,
-                f"{len(mapping)} steps, {total_num_dots} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes",
-                "puzzle_stats_textbox",
-            )
-        )
 
     def plot_puzzle_dots(self, mapping: list, collisions: list, layer_id):
         """Plot the mapping to the canvas"""
@@ -682,84 +838,43 @@ class NumberDots(EffectExtension):
         circle.set("id", id)
         return circle
 
-    def plot_letter_sequence(self, mapping: list):
+    def plot_letter_sequence(self, mapping: list, x, y):
         """Plot the mapping to the canvas"""
-        sequence_string = ""
-        y_pos = 929
-        x_pos = 49
-        width = 677
-        height = 113
-
-        for index, item in enumerate(mapping):
-            if (index + 1) % 5 == 0 and index != 0:
-                sequence_string += f"{item['letter_label']}" + " " + " "
-            else:
-                sequence_string += f"{item['letter_label']}" + " "
+        sequence_string = " ".join(
+            item["letter_label"] + ("  " if (index + 1) % 5 == 0 and index != 0 else "")
+            for index, item in enumerate(mapping)
+        )
 
         return self.add_text_in_rect(
-            x_pos,
-            y_pos,
-            width,
-            height,
             sequence_string,
             "sequence_string_textbox",
             "sequence_string_rect",
-            "#000000",  # Black
+            x,
+            y,
         )
 
     def plot_random_sequence_pairs(self, mapping: list):
         """Plot the mapping to the canvas as a sequence of shuffled pairs"""
 
-        pairs = []
-
-        for index, item in enumerate(mapping):
-            if index != 0:
-                pairs.append(
-                    f"{mapping[index-1]['letter_label']}-{item['letter_label']}"
-                )
-
-        random.shuffle(pairs)
-        sequence_string = " ".join(pairs)
-
-        x_pos = 49
-        y_pos = 929
-        width = 677
-        height = 113
+        pairs = [
+            f"{mapping[index - 1]['letter_label']}-{item['letter_label']}"
+            for index, item in enumerate(mapping)
+            if index != 0
+        ]
 
         return self.add_text_in_rect(
-            x_pos,
-            y_pos,
-            width,
-            height,
-            sequence_string,
+            " ".join(random.shuffle(pairs)),
             "sequence_string_textbox_extreme",
             "sequence_string_rect_extreme",
-            "#000000",  # Black
         )
 
     def plot_compact_mapping(self, mapping: list):
         """Plot the mapping to the canvas"""
-        sequence_string = ""
-        x_pos = 49
-        y_pos = 80
-        width = 677
-        height = 113
-
-        if len(mapping) < 500:
-            y_pos = 929 + 50
-
-        for item in mapping:
-            sequence_string += f"{item}" + " "
 
         return self.add_text_in_rect(
-            x_pos,
-            y_pos,
-            width,
-            height,
-            sequence_string,
+            " ".join(mapping),
             "compact_sequence_string_textbox",
             "compact_sequence_string_rect",
-            "#000000",  # Black
         )
 
     def create_mapping(self, elements: list):
@@ -775,7 +890,6 @@ class NumberDots(EffectExtension):
             previous_point = None
 
             for _, (x, y) in enumerate(path_trans_applied.end_points):
-                # Round the coordinates using the specified neighbor_radius factor
                 x_rounded = round(x)
                 y_rounded = round(y)
                 current_point = (x_rounded, y_rounded)
@@ -860,14 +974,15 @@ class NumberDots(EffectExtension):
 
     def add_text_in_rect(
         self,
-        x: int,
-        y: int,
-        width: int,
-        height: int,
         text_string: str,
         text_id: str,
         rect_id: str,
+        x,
+        y,
+        width=675,
+        height=800,
         color: str = "#000",
+        font_size: str = "11pt",
     ):
         """Add a text element inside a rectangle at the given location with specified properties"""
 
@@ -886,6 +1001,7 @@ class NumberDots(EffectExtension):
         )  # Reference the rectangle as the shape inside the text
         text_element.style = self.fontStyle
         text_element.style["fill"] = color
+        text_element.style["font-size"] = font_size
         tspan = Tspan(text_string)
         tspan.set_id(f"{text_id}_tspan")
         tspan.text = text_string
@@ -944,34 +1060,6 @@ class NumberDots(EffectExtension):
             if item["x"] == X and item["y"] == Y:
                 return item["letter_label"]
         return None
-
-    def find_neighbors(self, element: PathElement, r=5):
-        path: Path = element.path.transform(element.composed_transform())
-        points = path.to_absolute().control_points
-
-        coords = []
-        for x, y in points:
-            coords.append((x, y))
-
-        nf = NearNeighborFinder(coords, r)
-        averaged_points = nf.evaluate_points()
-
-        # inkex.debug(f"points: {coords}")
-        inkex.debug(f"averaged_points: {averaged_points}")
-
-        # # create new path with averaged points
-        new_path = PathElement()
-        new_path.path = Path(averaged_points)
-        # new_path.path = Move(1, 2)
-        # for x, y in averaged_points[1:]:
-        #     new_path.path.append(Line(x, y))
-
-        # new_path.style = Style(
-        #     {"stroke": "#000000", "fill": "none", "stroke-width": "5pt"}
-        # )
-
-        new_path.set("id", "averaged_path")
-        self.svg.append(new_path)
 
 
 # Entry point of the script
