@@ -20,6 +20,8 @@ from inkex import (
 from inkex.localization import inkex_gettext as _
 from inkex.paths import Line, Move, Path
 
+from NeigborFinder import NearNeighborFinder
+
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
 class NumberDots(EffectExtension):
@@ -40,12 +42,6 @@ class NumberDots(EffectExtension):
     # Define method to add command-line arguments for the extension
     def add_arguments(self, pars):
         """Add command-line arguments for the extension"""
-        pars.add_argument(
-            "--align_within",
-            type=int,
-            default=3,
-            help="Co-align the dots within the specified distance",
-        )
         pars.add_argument("--fontsize", default="8px", help="Size of node labels")
         pars.add_argument(
             "--fontweight", default="normal", help="Weight of node labels"
@@ -55,10 +51,10 @@ class NumberDots(EffectExtension):
         )
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument(
-            "--precision",
+            "--neighbor_radius",
             type=int,
             default=1,
-            help="Precision for coordinates; higher value represents lower resolution",
+            help="Neighbor_radius for coordinates; higher value represents lower resolution",
         )
 
         pars.add_argument(
@@ -175,10 +171,16 @@ class NumberDots(EffectExtension):
         )  # Check if the page is US Letter
 
         # find selected path element
-        selected_path: PathElement = self.svg.selection.filter(PathElement)
+        selectedElements: list = self.svg.selection.filter(PathElement)
 
-        if selected_path is None:
+        if selectedElements is None:
             raise AbortExtension(_("Please select at least one path object."))
+        if len(selectedElements) > 1:
+            raise AbortExtension(_("Please select only one path object."))
+
+        # Get the path data
+        for element in selectedElements:
+            self.find_neighbors(element, so.neighbor_radius)
 
         # Create layers for puzzle planes, dots, and text
         instructions_layer_id = "instructions_layer"
@@ -208,7 +210,7 @@ class NumberDots(EffectExtension):
 
         # Create a mapping of letter IDs, numbers, and coordinates
         # Also check for collisions and calculate distances
-        dot_connections = self.create_mapping(selected_path)
+        dot_connections = self.create_mapping(selectedElements)
         collisions, sorted_dots = self.check_density(
             dot_connections, so.minimal_distance
         )
@@ -221,7 +223,7 @@ class NumberDots(EffectExtension):
 
         self.annotate_source_page("puzzle_page", "Puzzle")
         self.prepend_instructions_page("puzzle_instructions", "Instructions")
-        self.process_puzzle_path(selected_path, solution_layer_id)
+        self.process_puzzle_path(selectedElements, solution_layer_id)
 
         # Plot the Puzzle Dots and Centroids
         if so.plot_dots:
@@ -760,25 +762,22 @@ class NumberDots(EffectExtension):
             "#000000",  # Black
         )
 
-    def create_mapping(self, nodes: list):
+    def create_mapping(self, elements: list):
         """Create a mapping of letter IDs, numbers, and coordinates"""
         result_mapping = []
         coord_to_label = {}  # Dictionary for efficient coordinate lookup
         dot_number = self.options.start - 1
 
-        # Get the precision factor from the options
-        precision = self.options.precision
-
-        for node in nodes:
-            path: Path = node.path
-            path_trans_applied = path.transform(node.composed_transform())
+        for pathElement in elements:
+            path: Path = pathElement.path
+            path_trans_applied = path.transform(pathElement.composed_transform())
 
             previous_point = None
 
             for _, (x, y) in enumerate(path_trans_applied.end_points):
-                # Round the coordinates using the specified precision factor
-                x_rounded = round(x / precision) * precision
-                y_rounded = round(y / precision) * precision
+                # Round the coordinates using the specified neighbor_radius factor
+                x_rounded = round(x)
+                y_rounded = round(y)
                 current_point = (x_rounded, y_rounded)
 
                 if current_point in coord_to_label:
@@ -945,6 +944,34 @@ class NumberDots(EffectExtension):
             if item["x"] == X and item["y"] == Y:
                 return item["letter_label"]
         return None
+
+    def find_neighbors(self, element: PathElement, r=5):
+        path: Path = element.path.transform(element.composed_transform())
+        points = path.to_absolute().control_points
+
+        coords = []
+        for x, y in points:
+            coords.append((x, y))
+
+        nf = NearNeighborFinder(coords, r)
+        averaged_points = nf.evaluate_points()
+
+        # inkex.debug(f"points: {coords}")
+        inkex.debug(f"averaged_points: {averaged_points}")
+
+        # # create new path with averaged points
+        new_path = PathElement()
+        new_path.path = Path(averaged_points)
+        # new_path.path = Move(1, 2)
+        # for x, y in averaged_points[1:]:
+        #     new_path.path.append(Line(x, y))
+
+        # new_path.style = Style(
+        #     {"stroke": "#000000", "fill": "none", "stroke-width": "5pt"}
+        # )
+
+        new_path.set("id", "averaged_path")
+        self.svg.append(new_path)
 
 
 # Entry point of the script
