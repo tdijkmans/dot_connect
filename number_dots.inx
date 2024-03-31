@@ -9,7 +9,9 @@
             <param name="page_margin" type="string"
                 gui-text="Page margin:" gui-description="Margin of the page.">7mm 7mm 7mm 7mm</param>
             <param name='title' type='string' gui-text='Title:'
-                gui-description='Title of the dot-to-dot puzzle.'></param>
+                gui-description='Title of the dot-to-dot puzzle. If empty, the title will be derived from the first two digits of the file name and used as Puzzle #.'></param>
+            <param name="subtitle" type="string" gui-text="Subtitle:"
+                gui-description="Subtitle of the dot-to-dot puzzle."></param>
 
             <param name="copyright_text" type="string" gui-text="Copyright text:"
                 gui-description="Text to be added as copyright.">Copyright © Polydot Puzzles 2024</param>
@@ -31,7 +33,6 @@
                 <option value="normal" gui-text="Normal">Normal</option>
                 <option value="bold" gui-text="Bold">Bold</option>
             </param>
-
             <separator />
 
             <label appearance="header">Instructions</label>
@@ -44,12 +45,6 @@
                 gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted.">
                 true</param>
             <separator />
-
-            <label appearance="header">Analysis</label>
-            <param name="plot_stats" type="bool" gui-text="Add stats"
-                gui-description="If checked, the stats will be added to the output.">false</param>
-            <separator />
-
         </page>
 
         <page name="Advanced" gui-text="Advanced">

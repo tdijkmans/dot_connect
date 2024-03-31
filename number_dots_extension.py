@@ -5,6 +5,7 @@ import random
 
 import inkex
 from inkex import (
+    NSS,
     AbortExtension,
     Boolean,
     Circle,
@@ -18,7 +19,7 @@ from inkex import (
     TextElement,
     Tspan,
 )
-from inkex.localization import inkex_gettext as _
+from inkex.localization import inkex_gettext
 from inkex.paths import Path
 
 
@@ -30,13 +31,14 @@ class NumberDots(EffectExtension):
         "abcdefghijklmnopqrstuvwxyz" + "1234567890" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     )
     fontsize = ""
-    fontStyle = Style(
+    consolasFont = Style(
         {
             "font-family": "Consolas",
             "fill-opacity": "1.0",
             "fill": "#000000",
         }
     )
+    plane_fill = "#808080"
 
     # Define method to add command-line arguments for the extension
     def add_arguments(self, pars):
@@ -60,13 +62,6 @@ class NumberDots(EffectExtension):
             type=Boolean,
             help="Enable extreme difficulty",
             default=False,
-        )
-
-        pars.add_argument(
-            "--plot_stats",
-            type=Boolean,
-            help="Add statistics",
-            default=True,
         )
 
         pars.add_argument(
@@ -104,7 +99,6 @@ class NumberDots(EffectExtension):
             default=False,
         )
 
-        # have a minimal distance between dots
         pars.add_argument(
             "--minimal_distance",
             type=float,
@@ -141,6 +135,13 @@ class NumberDots(EffectExtension):
         )
 
         pars.add_argument(
+            "--subtitle",
+            type=str,
+            help="Subtitle of the puzzle",
+            default="",
+        )
+
+        pars.add_argument(
             "--plot_footer",
             type=Boolean,
             help="Add copyright",
@@ -157,9 +158,8 @@ class NumberDots(EffectExtension):
     # Define the main effect method
     def effect(self):
         so = self.options  # shorthand for self.options
-        self.fontStyle = self.fontStyle
-        self.fontStyle["font-weight"] = so.fontweight
-        self.fontStyle["font-size"] = self.svg.unittouu(so.fontsize)
+        self.consolasFont["font-weight"] = so.fontweight
+        self.consolasFont["font-size"] = self.svg.unittouu(so.fontsize)
         self.fontsize = self.svg.unittouu(so.fontsize)
         paper_size = self.get_paper_size_info(self.svg)
 
@@ -168,45 +168,46 @@ class NumberDots(EffectExtension):
             self.svg.getElementById("source_path")
         ]
 
-        if selectedElements is None:
-            raise AbortExtension(_("Please select at least one path object."))
+        if not selectedElements:
+            raise AbortExtension(
+                inkex_gettext("Please select at least one path object.")
+            )
         if len(selectedElements) > 1:
-            raise AbortExtension(_("Please select only one path object."))
+            raise AbortExtension(inkex_gettext("Please select only one path object."))
 
         # Clean up defs from previous runs
         self.svg.defs.clear()
 
         # Create layers for puzzle planes, dots, and text
-        instructions_layer_id = "instructions_layer"
-        dots_layer_id = "dots_layer"
-        centroids_layer_id = "centroids_layer"
-        solution_layer_id = "solution_layer"
-        stats_layer_id = "stats_layer"
-
-        # Remove layers for puzzle planes, dots, and text if the option is set
-        if so.replace_dots:
-            self.remove_layer(dots_layer_id)
-
-        if so.replace_centroids:
-            self.remove_layer(centroids_layer_id)
-
-        if so.replace_text:
-            self.remove_layer(instructions_layer_id)
-
-        self.remove_layer(stats_layer_id)
-
-        layers_to_create = [
-            solution_layer_id,
-            centroids_layer_id,
-            dots_layer_id,
-            instructions_layer_id,
-        ]
-
-        if so.plot_stats:
-            layers_to_create.append(stats_layer_id)
-
-        self.create_layers(layers_to_create)
-        instructions_layer: Layer = self.svg.getElementById(instructions_layer_id)
+        layers = {
+            "instructions_layer": {
+                "id": "instructions_layer",
+                "remove": True,
+                "create": True,
+            },
+            "dots_layer": {
+                "id": "dots_layer",
+                "remove": so.replace_dots,
+                "create": True,
+            },
+            "centroids_layer": {
+                "id": "centroids_layer",
+                "remove": so.replace_centroids,
+                "create": True,
+            },
+            "solution_layer": {
+                "id": "solution_layer",
+                "remove": so.replace_text,
+                "create": True,
+            },
+            "stats_layer": {
+                "id": "stats_layer",
+                "remove": True,
+                "create": True,
+            },
+        }
+        self.layers = layers
+        self.manage_layers(layers)
 
         # Create a mapping of letter IDs, numbers, and coordinates
         # Also check for collisions and calculate distances
@@ -218,22 +219,28 @@ class NumberDots(EffectExtension):
             sorted_dots
         )
         compact_mapping = self.compress_mapping(dot_connections)
-        planes = self.count_planes(centroids_layer_id)
+        planes = self.count_planes(layers["centroids_layer"]["id"])
 
         self.annotate_source_page("puzzle_page", "Puzzle", so.page_margin)
-        instructions_guide = self.prepend_instructions_page(
+        self.prepend_instructions_page(
             "puzzle_instructions", "Instructions", so.page_margin
         )
-        x_guide, y_guide = instructions_guide.position
 
-        self.process_puzzle_path(selectedElements, solution_layer_id)
+        left_guide: Guide = self.svg.getElementById("sequence_guide_left")
+        x_guide, y_guide = left_guide.position
+
+        self.process_puzzle_path(selectedElements, layers["solution_layer"]["id"])
 
         # Plot the Puzzle Dots and Centroids
         if so.plot_dots:
-            self.plot_puzzle_dots(dot_connections, collisions, dots_layer_id)
+            self.plot_puzzle_dots(
+                dot_connections, collisions, layers["dots_layer"]["id"]
+            )
         # Plot centroids in filled elements
         if so.plot_centroids:
-            self.plot_puzzle_centroids(centroids_layer_id, solution_layer_id)
+            self.plot_puzzle_centroids(
+                layers["centroids_layer"]["id"], layers["solution_layer"]["id"]
+            )
 
         # Plot the Instructions
         if so.plot_sequence:
@@ -242,40 +249,93 @@ class NumberDots(EffectExtension):
                 x_guide,
                 y_guide + 150,
             )
-            instructions_layer.append(sequenceElement)
+            self.svg.getElementById(layers["instructions_layer"]["id"]).append(
+                sequenceElement
+            )
 
         # Add footer
         if so.plot_footer:
             self.plot_footer(
                 so.copyright_text,
-                instructions_layer_id,
+                layers["instructions_layer"]["id"],
                 x_guide,
                 y_guide + 1000,
                 paper_size,
             )
 
-        self.plot_title(so.title, instructions_layer_id, x_guide, y_guide + 100)
-        self.plot_difficulty_level(
-            dot_connections, instructions_layer_id, x_guide + 500, y_guide + 100
+        self.plot_title(
+            so.title, layers["instructions_layer"]["id"], x_guide, y_guide + 100
         )
+        self.plot_tagline(
+            so.subtitle, layers["instructions_layer"]["id"], x_guide + 50, y_guide + 500
+        )
+        self.plot_difficulty_level(
+            dot_connections,
+            layers["instructions_layer"]["id"],
+            x_guide + 500,
+            y_guide + 100,
+        )
+
+        # Add the source image to the solution layer for reference
+        images = self.document.xpath("//svg:image", namespaces=NSS)
+        if images and len(images) > 0:
+            source_image = images[0]
+            source_image.set("id", "source_image")
+            self.svg.getElementById(layers["solution_layer"]["id"]).append(source_image)
 
         # ADVANCED OPTIONS
         # Plot the sequence as pairs
         if so.extreme_difficulty:
             pairs = self.plot_random_sequence_pairs(dot_connections)
-            instructions_layer.append(pairs)
+            self.svg.getElementById(layers["instructions_layer"]["id"]).append(pairs)
         # Plot the compact sequence
         if so.plot_compact_sequence:
             compact_sequence = self.plot_compact_mapping(compact_mapping)
-            instructions_layer.append(compact_sequence)
+            self.svg.getElementById(layers["instructions_layer"]["id"]).append(
+                compact_sequence
+            )
         # Plot the reference sequence
         if so.plot_reference_sequence:
             self.plot_reference_sequence(x_guide, y_guide)
 
+        # Perform analysis and plot stats
+        self.perform_analysis(
+            dot_connections,
+            collisions,
+            sorted_dots,
+            compact_mapping,
+            lowest_distance,
+            avg_distance,
+            highest_distance,
+            planes,
+        )
+        unique_dots = self.get_unique_dots(dot_connections)
+        stats = f"{len(dot_connections)} steps, {len(unique_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes"
+
+        self.append_stats_page(
+            "puzzle_stats",
+            "Stats",
+            so.page_margin,
+            stats,
+            all_distances,
+        )
+
+    def perform_analysis(
+        self,
+        dot_connections,
+        collisions,
+        sorted_dots,
+        compact_mapping,
+        lowest_distance,
+        avg_distance,
+        highest_distance,
+        planes,
+    ):
         # Combine mappings and write data to a file
         current_file_name = self.svg.get("sodipodi:docname", "")  # Get doc name
         output_name = current_file_name.split(".")[0]  # Remove the file extension
 
+        # Perform analysis and plot stats
         unique_dots = self.get_unique_dots(dot_connections)
         sequence = self.svg.getElementById("sequence_string_textbox_tspan").text
         mappings = {
@@ -287,23 +347,17 @@ class NumberDots(EffectExtension):
             "stats": f"{len(dot_connections)} steps, {len(unique_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes",
         }
 
-        # Perform analysis and plot stats
-        if so.plot_stats:
-            self.append_stats_page(
-                "puzzle_stats",
-                "Stats",
-                so.page_margin,
-                mappings["stats"],
-                all_distances,
-                sequence,
-            )
-            # Write combined mappings to a single JSON file
-            self.write_mappings_to_file(
-                mappings, f"{output_name}_combined_mappings.json"
-            )
+        # Write combined mappings to a single JSON file
+        self.write_mappings_to_file(mappings, f"{output_name}_combined_mappings.json")
+
+    def manage_layers(self, layers):
+        layers_to_remove = [layer["id"] for layer in layers.values() if layer["remove"]]
+        self.remove_layers(layers_to_remove)
+
+        layers_to_create = [layer["id"] for layer in layers.values() if layer["create"]]
+        self.create_layers(layers_to_create)
 
     def process_puzzle_path(self, selected_path, layer_id):
-        # Set the style of the path
         for puzzle_path in selected_path:
             puzzle_path.set("id", "source_path")
             puzzle_path.style = Style(
@@ -317,7 +371,7 @@ class NumberDots(EffectExtension):
             layer.append(puzzle_path)
 
     def annotate_source_page(self, page_id, page_label, page_margin):
-        page = self.document.xpath("//inkscape:page", namespaces=inkex.NSS)[0]
+        page = self.document.xpath("//inkscape:page", namespaces=NSS)[0]
         page.set("id", page_id)
         page.set("inkscape:label", page_label)
         page.set("margin", page_margin)
@@ -327,18 +381,15 @@ class NumberDots(EffectExtension):
         doc_height = self.svg.get("height")
         converted_width = self.svg.unittouu(doc_width)
         converted_height = self.svg.unittouu(doc_height)
-
         x_shift = -(converted_width + 20)
-        y_shift = 0
 
         newpage = self.svg.namedview.new_page(
             str(x_shift),
-            str(-y_shift),
+            str(0),
             str(converted_width),
             str(converted_height),
             page_label,
         )
-
         newpage.set("id", page_id)
         newpage.set("margin", page_margin)
 
@@ -346,18 +397,13 @@ class NumberDots(EffectExtension):
             (-(converted_width - 25), 0), (1, 0), "Sequence guide left"
         )
         left_guide.set("id", "sequence_guide_left")
-
         right_guide: Guide = self.svg.namedview.add_guide(
             (-100, 0), (1, 0), "Sequence guide right"
         )
-
         right_guide.set("id", "sequence_guide_right")
 
-        return left_guide
-
-    def append_stats_page(
-        self, page_id, page_label, page_margin, stats, all_distances, connections_str
-    ):
+    def append_stats_page(self, page_id, page_label, page_margin, stats, all_distances):
+        connections_str = self.svg.getElementById("sequence_string_textbox_tspan").text
         doc_width = self.svg.get("width")
         doc_height = self.svg.get("height")
         converted_width = self.svg.unittouu(doc_width)
@@ -382,7 +428,7 @@ class NumberDots(EffectExtension):
         new_guide.set("id", "stats_guide")
         x_guide, y_guide = new_guide.position
 
-        self.svg.getElementById("stats_layer").append(
+        self.svg.getElementById(self.layers["stats_layer"]["id"]).append(
             self.add_text_in_rect(
                 stats,
                 "mapping_textbox",
@@ -441,9 +487,11 @@ class NumberDots(EffectExtension):
             )
             y_pos += 20  # Increase y coordinate for next appended element
 
-            self.svg.getElementById("stats_layer").append(histogram_group)
+            self.svg.getElementById(self.layers["stats_layer"]["id"]).append(
+                histogram_group
+            )
 
-    def make_connections_histogram(self, connections_str, x=0, y=0):
+    def make_connections_histogram(self, connections_str, x=0, y=0, max_repeat=2):
         text_element = TextElement(
             x="",
             y="",
@@ -460,7 +508,7 @@ class NumberDots(EffectExtension):
         # Split the sequence into individual connections
         connections = connections_str.split()
         singular_connections = 0
-        non_singular_connections = 0
+        repeating_connections = 0
 
         # Iterate over each connection
         for i in range(len(connections) - 1):
@@ -480,23 +528,24 @@ class NumberDots(EffectExtension):
 
         # Plotting connections after all iterations
         for connection, count in sorted_connections:
-            if count > 1:
-                non_singular_connections += 1
+            if count > max_repeat:
+                repeating_connections += 1
                 text_element.append(
                     Tspan(
                         f"{connection} : {count * '•'}\n",
                         x=str(x),
-                        y=str(y + non_singular_connections * 20),
+                        y=str(y + repeating_connections * 20),
                         id=f"connection_{connection}",
                     )
                 )
+                self.mark_connection(connection)
 
         text_element.append(
             Tspan(
-                f"Non-singular connections: {non_singular_connections}\n",
+                f"Repeating connections (above {max_repeat}): {repeating_connections}\n",
                 x=str(x),
-                y=str(y + (non_singular_connections + 1) * 20),
-                id=f"non_singular_connections_{non_singular_connections}",
+                y=str(y + (repeating_connections + 1) * 20),
+                id=f"repeating_connections_{repeating_connections}",
                 font_weight="bold",
             )
         )
@@ -510,25 +559,52 @@ class NumberDots(EffectExtension):
             )
         )
 
-        self.svg.getElementById("stats_layer").append(text_element)
+        self.svg.getElementById(self.layers["stats_layer"]["id"]).append(text_element)
 
-    def plot_title(self, title: str, layer_id, x_guide, y_guide):
+    def mark_connection(self, connection, color="#ff0000"):
+        left_dot, right_dot = connection.split()
+        markStyle = Style({"stroke": color, "stroke-width": "2pt"})
+        self.svg.getElementById(f"black_dot_{left_dot}").style = markStyle
+        self.svg.getElementById(f"black_dot_{right_dot}").style = markStyle
+
+    def plot_title(self, title_field: str, layer_id, x, y):
         layer = self.svg.getElementById(layer_id)
-        title_element = TextElement(x=str(x_guide), y=str(y_guide), id="title_textbox")
+        title_element = TextElement(x=str(x), y=str(y), id="title_textbox")
 
-        # Set the title of the puzzle as the filename if not provided
-        title = title or self.svg.get("sodipodi:docname", "").split(".")[0]
+        if not title_field:
+            docname = self.svg.get("sodipodi:docname", "").split(".")[0]
+            # Parse the first two characters of the filename as the number of the puzzle
+            title = f"Polydot {docname[:2]}"
+        else:
+            title = title_field
+
         title_element.text = title
         title_element.style = Style(
             {
                 "font-family": "Consolas",
                 "fill-opacity": "1.0",
                 "fill": "#000000",
-                "font-size": "20px",
+                "font-size": "16pt",
                 "font-weight": "bold",
             }
         )
         layer.append(title_element)
+
+    def plot_tagline(self, subtitle: str, layer_id, x, y):
+        layer = self.svg.getElementById(layer_id)
+        subtitle_element = TextElement(x=str(x), y=str(y), id="subtitle_textbox")
+        subtitle_element.text = subtitle
+        subtitle_element.style = Style(
+            {
+                "font-family": "Garamond",
+                "fill-opacity": "1.0",
+                "fill": "#000000",
+                "font-size": "32pt",
+                "font-weight": "bold",
+                "font-style": "italic",
+            }
+        )
+        layer.append(subtitle_element)
 
     def plot_footer(
         self,
@@ -546,7 +622,7 @@ class NumberDots(EffectExtension):
                 "font-family": "Garamond",
                 "fill-opacity": "1.0",
                 "fill": "#000000",
-                "font-size": "8px",
+                "font-size": "8pt",
             }
         )
         layer.append(footerText)
@@ -588,16 +664,16 @@ class NumberDots(EffectExtension):
 
         layer.append(grouped_brains)
 
-    def remove_layer(self, layer_id):
+    def remove_layers(self, layerIds: list):
         """Remove layers for puzzle planes, dots, and text"""
-        layer = self.svg.getElementById(layer_id)
+        for layerId in layerIds:
+            layer = self.svg.getElementById(layerId)
+            if layer is not None:
+                self.svg.remove(layer)
 
-        if layer is not None:
-            self.svg.remove(layer)
-
-    def create_layers(self, layers: list):
+    def create_layers(self, layer_ids: list):
         """Create layers for puzzle planes, dots, and text"""
-        for layer in layers:
+        for layer in layer_ids:
             new_layer = self.svg.add(Layer())
             new_layer.set("id", layer)
             new_layer.set("inkscape:label", layer)
@@ -632,23 +708,21 @@ class NumberDots(EffectExtension):
 
     def count_planes(self, puzzle_planes_id):
         processed_planes = self.svg.getElementById(puzzle_planes_id)
-        xpath_query = ".//*[@style and contains(@style, 'fill:#ff0000')]"
+        xpath_query = f".//*[@style and contains(@style, 'fill:{self.plane_fill}')]"
         red_planes = self.svg.xpath(xpath_query)
         number_of_red_planes = len(red_planes) if red_planes is not None else 0
         number_of_planes = len(processed_planes) if processed_planes is not None else 0
 
         return number_of_planes or number_of_red_planes
 
-    def plot_puzzle_centroids(
-        self, centroids_layer, solutions_layer, target_fill="#ff0000"
-    ):
-        xpath_query = f".//*[@style and contains(@style, 'fill:{target_fill}')]"
-        red_planes = self.svg.xpath(xpath_query)
+    def plot_puzzle_centroids(self, centroids_layer, solutions_layer):
+        xpath_query = f".//*[@style and contains(@style, 'fill:{self.plane_fill}')]"
+        planes_to_color = self.svg.xpath(xpath_query)
 
-        if red_planes is None or len(red_planes) == 0:
+        if planes_to_color is None or len(planes_to_color) == 0:
             return
 
-        for index, plane in enumerate(red_planes):
+        for index, plane in enumerate(planes_to_color):
             endpoints = plane.path.transform(plane.composed_transform()).end_points
 
             x_coords = []
@@ -679,7 +753,7 @@ class NumberDots(EffectExtension):
             plane.style = Style(
                 {
                     "stroke": None,
-                    "fill": "#d3d3d3",
+                    "fill": "#808080",
                 }
             )
             self.svg.getElementById(solutions_layer).append(plane)
@@ -715,7 +789,7 @@ class NumberDots(EffectExtension):
         )
         text_element.set("shape-inside", f"url(#{rect.get('id')})")
 
-        text_element.style = self.fontStyle
+        text_element.style = self.consolasFont
         text_element.style["fill"] = "#000000"
 
         # Add the text element to the document
@@ -807,7 +881,7 @@ class NumberDots(EffectExtension):
             text_element_with_label.set("text-anchor", "middle")
             text_element_with_label.set("dominant-baseline", "middle")
             text_element_with_label.set("id", f"text_label_{step['letter_label']}")
-            text_element_with_label.style = self.fontStyle
+            text_element_with_label.style = self.consolasFont
             text_element_with_label.set("letter-spacing", "1px")
             #  make red when collision
             if collision_exists:
@@ -968,7 +1042,7 @@ class NumberDots(EffectExtension):
         elem = TextElement(x=str(x), y=str(y))
         elem.text = str(text)
         elem.set("id", id)
-        elem.style = self.fontStyle
+        elem.style = self.consolasFont
         elem.style["fill"] = color
         return elem
 
@@ -999,7 +1073,7 @@ class NumberDots(EffectExtension):
         text_element.set(
             "shape-inside", f"url(#{rect_id})"
         )  # Reference the rectangle as the shape inside the text
-        text_element.style = self.fontStyle
+        text_element.style = self.consolasFont
         text_element.style["fill"] = color
         text_element.style["font-size"] = font_size
         tspan = Tspan(text_string)
