@@ -6,6 +6,7 @@ from inkex import (
     Boolean,
     Circle,
     EffectExtension,
+    Layer,
     Style,
 )
 from inkex.paths import Path
@@ -62,6 +63,13 @@ class CenterDotAdder(EffectExtension):
 
         rgb_color = inkex.Color(o.plane_fill).to_rgb()
         hex_color = "#{:02x}{:02x}{:02x}".format(*rgb_color)
+
+        layer_ids = [o.centroids_layer, o.solution_layer]
+        for layer in layer_ids:
+            if not self.svg.getElementById(layer):
+                new_layer = self.svg.add(Layer())
+                new_layer.set("id", layer)
+                new_layer.set("inkscape:label", layer)
 
         self.plot_puzzle_centroids(
             self.options.centroids_layer,

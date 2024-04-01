@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-  <name>Add point within path</name>
-  <id>org.inkscape.filter.add_point_within_path</id>
+  <name>Add center dot</name>
+  <id>org.inkscape.filter.add_centerdot</id>
   <param name="tab" type="notebook">
     <page name="Options" gui-text="Options">
       <label appearance="header">Instructions</label>
@@ -16,11 +16,11 @@
         gui-text="Clearance:">4.0</param>
       <param name="fraction" type="int" precision="10" min="5" max="100" appearance="full"
         gui-text="Fraction with which to divide the bounding box:">20</param>
-      <param name="plane_fill" type="color" gui-text="Plane fill"
+      <param name="plane_fill" type="color" gui-text="Plane fill" default="#808080"
         gui-description="Color of the planes from which the centroids are calculated.">#808080</param>
     </page>
     <page name="Help" gui-text="Help">
-      <label xml:space="preserve">This extension adds a point within a path. The point is calculated as the centroid of a plane filled with a color specified by the user. The plane is defined by the path and the bounding box of the path. The bounding box is divided into a grid with a fraction specified by the user. The centroid is calculated as the center of mass of the plane. The centroid is plotted on the layer specified by the user. The solution is plotted on the layer specified by the user. The clearance is the distance between the centroid and the path. The clearance is specified by the user. The user can specify the color of the plane from which the centroid is calculated. The user can specify the name of the layer where the centroids will be plotted. The user can specify the name of the layer where the solution will be plotted.</label>
+      <label xml:space="preserve">This extension adds a center point within a path. The point is calculated as the centroid of a plane filled with a color specified by the user. The plane is defined by the path and the bounding box of the path. The bounding box is divided into a grid with a fraction specified by the user. The centroid is calculated as the center of mass of the plane. The centroid is plotted on the layer specified by the user. The solution is plotted on the layer specified by the user. The clearance is the distance between the centroid and the path. The clearance is specified by the user. The user can specify the color of the plane from which the centroid is calculated. The user can specify the name of the layer where the centroids will be plotted. The user can specify the name of the layer where the solution will be plotted.</label>
     </page>
   </param>
   <effect>
@@ -30,6 +30,6 @@
   </effect>
   <script>
     <!-- Pass the selected parameters to your Python script -->
-    <command location="inx" interpreter="python">add_point_within_path.py</command>
+    <command location="inx" interpreter="python">add_centerdot.py</command>
   </script>
 </inkscape-extension>
