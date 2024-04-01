@@ -717,7 +717,7 @@ class NumberDots(EffectExtension):
 
         return number_of_planes or number_of_red_planes
 
-    def plot_puzzle_centroids(self, centroids_layer, solutions_layer):
+    def plot_puzzle_centroids(self, centroids_layer, solution_layer):
         xpath_query = f".//*[@style and contains(@style, 'fill:{self.plane_fill}')]"
         planes_to_color = self.svg.xpath(xpath_query)
 
@@ -758,7 +758,7 @@ class NumberDots(EffectExtension):
                     "fill": "#808080",
                 }
             )
-            self.svg.getElementById(solutions_layer).append(plane)
+            self.svg.getElementById(solution_layer).append(plane)
 
     def createRootGroup(self, id: str):
         root_group: Group = self.svg.add(Group())
