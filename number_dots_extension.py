@@ -121,7 +121,7 @@ class NumberDots(EffectExtension):
         )
 
         pars.add_argument(
-            "--replace_text",
+            "--replace_instructions",
             type=Boolean,
             help="Replace the text",
             default=True,
@@ -182,7 +182,7 @@ class NumberDots(EffectExtension):
         layers = {
             "instructions_layer": {
                 "id": "instructions_layer",
-                "remove": True,
+                "remove": so.replace_instructions,
                 "create": True,
             },
             "dots_layer": {
@@ -197,7 +197,7 @@ class NumberDots(EffectExtension):
             },
             "solution_layer": {
                 "id": "solution_layer",
-                "remove": so.replace_text,
+                "remove": False,
                 "create": True,
             },
             "stats_layer": {
@@ -239,7 +239,8 @@ class NumberDots(EffectExtension):
         # Plot centroids in filled elements
         if so.plot_centroids:
             self.plot_puzzle_centroids(
-                layers["centroids_layer"]["id"], layers["solution_layer"]["id"]
+                layers["centroids_layer"]["id"],
+                layers["solution_layer"]["id"],
             )
 
         # Plot the Instructions
@@ -371,10 +372,10 @@ class NumberDots(EffectExtension):
             layer.append(puzzle_path)
 
     def annotate_source_page(self, page_id, page_label, page_margin):
-        page = self.document.xpath("//inkscape:page", namespaces=NSS)[0]
-        page.set("id", page_id)
-        page.set("inkscape:label", page_label)
-        page.set("margin", page_margin)
+        first_page = self.document.xpath("//inkscape:page", namespaces=NSS)[0]
+        first_page.set("id", page_id)
+        first_page.set("inkscape:label", page_label)
+        first_page.set("margin", page_margin)
 
     def prepend_instructions_page(self, page_id, page_label, page_margin):
         doc_width = self.svg.get("width")
@@ -666,10 +667,11 @@ class NumberDots(EffectExtension):
 
     def remove_layers(self, layerIds: list):
         """Remove layers for puzzle planes, dots, and text"""
-        for layerId in layerIds:
-            layer = self.svg.getElementById(layerId)
-            if layer is not None:
-                self.svg.remove(layer)
+
+        all_layers = self.svg.xpath('//svg:g[@inkscape:groupmode="layer"]')
+        for layer in all_layers:
+            if layer.get("inkscape:label") in layerIds:
+                layer.delete()
 
     def create_layers(self, layer_ids: list):
         """Create layers for puzzle planes, dots, and text"""
@@ -720,7 +722,7 @@ class NumberDots(EffectExtension):
         planes_to_color = self.svg.xpath(xpath_query)
 
         if planes_to_color is None or len(planes_to_color) == 0:
-            return
+            inkex.errormsg("No planes found to color")
 
         for index, plane in enumerate(planes_to_color):
             endpoints = plane.path.transform(plane.composed_transform()).end_points
@@ -744,7 +746,7 @@ class NumberDots(EffectExtension):
                 centroid_x - 4,
                 centroid_y + self.fontsize / 4,  # Adjust Y for centering
                 "*",
-                f"plane_centroid_label_{id}",
+                f"plane_centroid_{id}",
                 "#000000",  # Black
             )
             self.svg.getElementById(centroids_layer).append(text_element)

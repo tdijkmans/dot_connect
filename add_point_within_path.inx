@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Add point within path</name>
+  <id>org.inkscape.filter.add_point_within_path</id>
+  <param name="tab" type="notebook">
+    <page name="Options" gui-text="Options">
+      <label appearance="header">Instructions</label>
+      <param name="plot_centroids" type="bool" gui-text="Plot centroids"
+        gui-description="If checked, the centroids of planes filled with color red (#ff0000) will be plotted.">
+        true</param>
+    </page>
+    <page name="Help" gui-text="Help">
+      <label xml:space="preserve">This extension replaces the paths in the selection with numbered dots in place of their nodes. The numbers are assigned to the nodes in the order they appear in the path. Filled planes with color red (#ff0000) are used to plot the symbol '*' at the approximate center of the path.
+            </label>
+    </page>
+  </param>
+  <effect>
+    <effects-menu>
+      <submenu name="Generate numbered dots" />
+    </effects-menu>
+  </effect>
+  <script>
+    <!-- Pass the selected parameters to your Python script -->
+    <command location="inx" interpreter="python">add_point_within_path.py</command>
+  </script>
+</inkscape-extension>

@@ -66,8 +66,8 @@
             <param name="replace_centroids" type="bool" gui-text="Replace centroids"
                 gui-description="If checked, the existing centroids will be removed and replaced by the new centroids.">
                 false</param>
-            <param name="replace_text" type="bool" gui-text="Replace text"
-                gui-description="If checked, the existing text will be removed and replaced by the new text.">
+            <param name="replace_instructions" type="bool" gui-text="Replace instructions"
+                gui-description="If checked, the existing instructions will be removed and replaced by the new instructions.">
                 true</param>
         </page>
 
