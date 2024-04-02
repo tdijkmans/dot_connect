@@ -13,7 +13,7 @@
   </param>
   <effect>
     <effects-menu>
-      <submenu name="Generate numbered dots" />
+      <submenu name="Create polydot puzzle" />
     </effects-menu>
   </effect>
   <script>
