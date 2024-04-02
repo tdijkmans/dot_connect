@@ -25,7 +25,7 @@
   </param>
   <effect>
     <effects-menu>
-      <submenu name="Create polydot puzzle" />
+      <submenu name="Create puzzle" />
     </effects-menu>
   </effect>
   <script>

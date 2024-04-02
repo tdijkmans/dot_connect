@@ -24,7 +24,7 @@ from inkex.paths import Path
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
-class NumberDots(EffectExtension):
+class CreatePuzzle(EffectExtension):
     """Replace the selection's nodes with numbered dots according to the options"""
 
     coding_sequence = (
@@ -1140,4 +1140,4 @@ class NumberDots(EffectExtension):
 
 # Entry point of the script
 if __name__ == "__main__":
-    NumberDots().run()
+    CreatePuzzle().run()
