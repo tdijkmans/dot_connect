@@ -13,7 +13,7 @@
       <param name="solution_layer" type="string" gui-text="Solution layer"
         gui-description="Name of the layer where the solution will be plotted.">solution_layer</param>
       <param name="clearance" type="int" precision="1" min="0" max="20" appearance="full"
-        gui-text="Clearance:">4.0</param>
+        gui-text="Clearance:">4</param>
       <param name="fraction" type="int" precision="10" min="5" max="100" appearance="full"
         gui-text="Fraction with which to divide the bounding box:">20</param>
       <param name="plane_fill" type="color" gui-text="Plane fill" default="#808080"

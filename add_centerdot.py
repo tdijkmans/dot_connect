@@ -64,7 +64,7 @@ class CenterDotAdder(EffectExtension):
         rgb_color = inkex.Color(o.plane_fill).to_rgb()
         hex_color = "#{:02x}{:02x}{:02x}".format(*rgb_color)
 
-        layer_ids = [o.centroids_layer, o.solution_layer]
+        layer_ids = [o.solution_layer, o.centroids_layer]
         for layer in layer_ids:
             if not self.svg.getElementById(layer):
                 new_layer = self.svg.add(Layer())
@@ -156,6 +156,7 @@ class CenterDotAdder(EffectExtension):
 
     def has_clearance(self, x, y, path_string, clearance):
         """Check if the point has clearance around it."""
+
         return all(
             self.point_inside_path(x + i * clearance, y + j * clearance, path_string)
             for i in [-1, 0, 1]

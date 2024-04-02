@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 
-class NearNeighborFinder:
+class PointsAggregator:
     """
     A class that finds the neighbors of given points within a specified radius.
 
@@ -19,12 +19,12 @@ class NearNeighborFinder:
         evaluate_points(): Evaluates the points and returns their averaged coordinates.
     """
 
-    def __init__(self, points, r):
+    def __init__(self, points, radius: int):
         self.points = points
-        self.r = r
+        self.r = radius
         self.grid_map = defaultdict(lambda: [])
         for x, y in points:
-            key = (x // r, y // r)
+            key = (x // radius, y // radius)
             self.grid_map[key].append((x, y))
 
     def query(self, qx, qy):

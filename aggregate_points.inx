@@ -4,8 +4,8 @@
   <id>org.inkscape.aggregate_points</id>
   <param name="tab" type="notebook">
     <page name="Options" gui-text="Options">
-      <param name="neighbor_radius" type="float" precision="1" min="0" max="20"
-        appearance="full" gui-text="Neighbor radius">5.0</param>
+      <param name="aggregation_radius" type="int" precision="1" min="0" max="100"
+        appearance="full" gui-text="Aggregation radius">5</param>
     </page>
     <page name="Help" gui-text="Help">
       <label xml:space="preserve">This extension aggregates points in a path. The points are aggregated by averaging the X- and Y-coordinates of the points within a certain radius.</label>
