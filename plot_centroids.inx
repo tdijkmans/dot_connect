@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-  <name>Add center dots</name>
-  <id>org.inkscape.filter.add_centerdots</id>
+  <name>Plot centroids</name>
+  <id>org.inkscape.filter.plot_centroids</id>
   <param name="tab" type="notebook">
     <page name="Options" gui-text="Options">
       <label appearance="header">Instructions</label>
@@ -30,6 +30,6 @@
   </effect>
   <script>
     <!-- Pass the selected parameters to your Python script -->
-    <command location="inx" interpreter="python">add_centerdots.py</command>
+    <command location="inx" interpreter="python">plot_centroids.py</command>
   </script>
 </inkscape-extension>

@@ -10,7 +10,7 @@ from inkex import (
 from inkex.paths import Path
 
 
-class CenterAdder:
+class CentroidPlotter:
     def __init__(self, svg):
         self.svg = svg
 
@@ -18,7 +18,7 @@ class CenterAdder:
         self, centroids_layer, solution_layer, clearance, fraction, plane_fill
     ):
         """Plot the centroids of filled elements in the puzzle."""
-        self.ensure_layers_exist(centroids_layer, solution_layer)
+        c_layer, s_layer = self.ensure_layers_exist(centroids_layer, solution_layer)
 
         hex_color = self.rgb_to_hex(plane_fill)
         planes_to_color = self.get_planes_to_color(hex_color)
@@ -52,8 +52,8 @@ class CenterAdder:
 
             centroid = self.createCircle(x, y, 1, f"plane_centroid_{id}")
             plane, centroid = self.set_element_attributes(plane, centroid, id, inside)
-            self.svg.getElementById(centroids_layer).append(centroid)
-            self.svg.getElementById(solution_layer).append(plane)
+            c_layer.append(centroid)
+            s_layer.append(plane)
 
     def get_planes_to_color(self, hex_color):
         xpath_query = f".//*[@style and contains(@style, 'fill:{hex_color}')]"
@@ -65,10 +65,14 @@ class CenterAdder:
     def ensure_layers_exist(self, centroids_layer, solution_layer):
         for layer in [centroids_layer, solution_layer]:
             element = self.svg.getElementById(layer)
-            if element is not None:
+            if element is None:
                 new_layer = self.svg.add(Layer())
                 new_layer.set("id", layer)
                 new_layer.set("inkscape:label", layer)
+
+        return self.svg.getElementById(centroids_layer), self.svg.getElementById(
+            solution_layer
+        )
 
     def adjust_position_in_grid(
         self, x, y, bounding_box, path_string, clearance, fraction

@@ -3,7 +3,6 @@ import json
 import math
 import random
 
-import inkex
 from inkex import (
     NSS,
     AbortExtension,
@@ -22,7 +21,7 @@ from inkex import (
 from inkex.localization import inkex_gettext
 from inkex.paths import Path
 
-from CenterDotAdder import CenterAdder
+from CentroidPlotter import CentroidPlotter
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
@@ -279,7 +278,7 @@ class CreatePuzzle(EffectExtension):
             )
 
         if so.plot_centroids:
-            ca = CenterAdder(self.svg)
+            ca = CentroidPlotter(self.svg)
             ca.plot_puzzle_centroids(
                 so.centroids_layer,
                 so.solution_layer,
