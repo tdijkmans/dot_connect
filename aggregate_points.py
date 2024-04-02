@@ -1,5 +1,5 @@
 import inkex
-from inkex import AbortExtension
+from inkex import NSS, AbortExtension
 from inkex.elements import PathElement
 from inkex.localization import inkex_gettext as _
 from inkex.paths import Path
@@ -24,17 +24,20 @@ class AggregatePointsExtension(inkex.EffectExtension):
         """This is the main function of the extension"""
         options = self.options
 
-        selected_paths: list[PathElement] = self.svg.selection.filter(PathElement)
+        target_paths: list[PathElement] = self.svg.selection.filter(PathElement) or [
+            self.svg.getElementById("source_path")
+            or self.document.xpath("//svg:path", namespaces=NSS)[0]
+        ]
 
-        if not selected_paths:
+        if not target_paths:
             raise AbortExtension(_("Please select at least one path object."))
 
-        for path in selected_paths:
-            self.aggregate_points(path, options.aggregation_radius)
+        for target_paths in target_paths:
+            self.aggregate_points(target_paths, options.aggregation_radius)
             # move the original path to the left
-            path.transform = "translate(-20,0)"
-            path.set("id", "original_path")
-            path.set("style", "stroke:#D3D3D3;fill:none;stroke-width:1pt")
+            target_paths.transform = "translate(-20,0)"
+            target_paths.set("id", "original_path")
+            target_paths.set("style", "stroke:#D3D3D3;fill:none;stroke-width:1pt")
 
     def aggregate_points(self, element: PathElement, aggregation_radius=5):
         """Find the neighbors of the points in the path element and aggregate them"""

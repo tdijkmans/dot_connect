@@ -22,6 +22,8 @@ from inkex import (
 from inkex.localization import inkex_gettext
 from inkex.paths import Path
 
+from CenterDotAdder import CenterAdder
+
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
 class CreatePuzzle(EffectExtension):
@@ -72,6 +74,57 @@ class CreatePuzzle(EffectExtension):
         )
 
         pars.add_argument(
+            "--centroids_layer",
+            help="Layer to plot the centroids",
+            default="centroids_layer",
+        )
+
+        pars.add_argument(
+            "--solution_layer",
+            help="Layer to plot the solution",
+            default="solution_layer",
+        )
+
+        pars.add_argument(
+            "--dots_layer",
+            help="Layer to plot the dots",
+            default="dots_layer",
+        )
+
+        pars.add_argument(
+            "--instructions_layer",
+            help="Layer to plot the instructions",
+            default="instructions_layer",
+        )
+
+        pars.add_argument(
+            "--stats_layer",
+            help="Layer to plot the stats",
+            default="stats_layer",
+        )
+
+        pars.add_argument(
+            "--clearance",
+            type=int,
+            help="Clearance around the centroid",
+            default=4,
+        )
+
+        pars.add_argument(
+            "--fraction",
+            type=int,
+            help="Fraction of the bounding box to search",
+            default=20,
+        )
+
+        pars.add_argument(
+            "--plane_fill",
+            help="Fill color of the plane",
+            default="#808080",
+            type=str,
+        )
+
+        pars.add_argument(
             "--plot_dots",
             type=Boolean,
             help="Plot dots",
@@ -101,9 +154,9 @@ class CreatePuzzle(EffectExtension):
 
         pars.add_argument(
             "--minimal_distance",
-            type=float,
+            type=int,
             help="Minimal distance between dots",
-            default=6.0,
+            default=6,
         )
 
         pars.add_argument(
@@ -144,7 +197,7 @@ class CreatePuzzle(EffectExtension):
         pars.add_argument(
             "--plot_footer",
             type=Boolean,
-            help="Add copyright",
+            help="Add footer",
             default=False,
         )
 
@@ -162,47 +215,35 @@ class CreatePuzzle(EffectExtension):
         self.consolasFont["font-size"] = self.svg.unittouu(so.fontsize)
         self.fontsize = self.svg.unittouu(so.fontsize)
         paper_size = self.get_paper_size_info(self.svg)
-
-        # find selected path element
-        selectedElements: list = self.svg.selection.filter(PathElement) or [
-            self.svg.getElementById("source_path")
-        ]
-
-        if not selectedElements:
-            raise AbortExtension(
-                inkex_gettext("Please select at least one path object.")
-            )
-        if len(selectedElements) > 1:
-            raise AbortExtension(inkex_gettext("Please select only one path object."))
-
+        source_for_puzzle = self.get_selected_elements()
         # Clean up defs from previous runs
         self.svg.defs.clear()
 
         # Create layers for puzzle planes, dots, and text
         layers = {
+            "solution_layer": {
+                "id": so.solution_layer,
+                "remove": False,
+                "create": True,
+            },
             "instructions_layer": {
-                "id": "instructions_layer",
+                "id": so.instructions_layer,
                 "remove": so.replace_instructions,
                 "create": True,
             },
+            "stats_layer": {
+                "id": so.stats_layer,
+                "remove": True,
+                "create": True,
+            },
             "dots_layer": {
-                "id": "dots_layer",
+                "id": so.dots_layer,
                 "remove": so.replace_dots,
                 "create": True,
             },
             "centroids_layer": {
-                "id": "centroids_layer",
+                "id": so.centroids_layer,
                 "remove": so.replace_centroids,
-                "create": True,
-            },
-            "solution_layer": {
-                "id": "solution_layer",
-                "remove": False,
-                "create": True,
-            },
-            "stats_layer": {
-                "id": "stats_layer",
-                "remove": True,
                 "create": True,
             },
         }
@@ -211,7 +252,7 @@ class CreatePuzzle(EffectExtension):
 
         # Create a mapping of letter IDs, numbers, and coordinates
         # Also check for collisions and calculate distances
-        dot_connections = self.create_mapping(selectedElements)
+        dot_connections = self.create_mapping(source_for_puzzle)
         collisions, sorted_dots, all_distances = self.check_density(
             dot_connections, so.minimal_distance
         )
@@ -229,18 +270,22 @@ class CreatePuzzle(EffectExtension):
         left_guide: Guide = self.svg.getElementById("sequence_guide_left")
         x_guide, y_guide = left_guide.position
 
-        self.process_puzzle_path(selectedElements, layers["solution_layer"]["id"])
+        self.process_puzzle_path(source_for_puzzle, layers["solution_layer"]["id"])
 
         # Plot the Puzzle Dots and Centroids
         if so.plot_dots:
             self.plot_puzzle_dots(
                 dot_connections, collisions, layers["dots_layer"]["id"]
             )
-        # Plot centroids in filled elements
+
         if so.plot_centroids:
-            self.plot_puzzle_centroids(
-                layers["centroids_layer"]["id"],
-                layers["solution_layer"]["id"],
+            ca = CenterAdder(self.svg)
+            ca.plot_puzzle_centroids(
+                so.centroids_layer,
+                so.solution_layer,
+                so.clearance,
+                so.fraction,
+                so.plane_fill,
             )
 
         # Plot the Instructions
@@ -320,6 +365,35 @@ class CreatePuzzle(EffectExtension):
             stats,
             all_distances,
         )
+
+    def get_selected_elements(self):
+        # Get the selected elements, source path, or first path in the document
+        source_p: PathElement = self.svg.getElementById("source_path")
+        fallback_p: PathElement = next(
+            iter(self.document.xpath("//svg:path", namespaces=NSS)), None
+        )
+        selected_path = self.svg.selection.filter(PathElement)
+
+        # If any paths are selected, use them; otherwise, fallback to source_p or fallback_p
+        if selected_path:
+            selected_elements = selected_path
+        else:
+            selected_elements = (
+                [source_p]
+                if source_p is not None
+                else [fallback_p]
+                if fallback_p is not None
+                else []
+            )
+
+        if not selected_elements:
+            raise AbortExtension(
+                inkex_gettext("Please select at least one path object.")
+            )
+        if len(selected_elements) > 1:
+            raise AbortExtension(inkex_gettext("Please select only one path object."))
+
+        return selected_elements
 
     def perform_analysis(
         self,
@@ -717,49 +791,6 @@ class CreatePuzzle(EffectExtension):
 
         return number_of_planes or number_of_red_planes
 
-    def plot_puzzle_centroids(self, centroids_layer, solution_layer):
-        xpath_query = f".//*[@style and contains(@style, 'fill:{self.plane_fill}')]"
-        planes_to_color = self.svg.xpath(xpath_query)
-
-        if planes_to_color is None or len(planes_to_color) == 0:
-            inkex.errormsg("No planes found to color")
-
-        for index, plane in enumerate(planes_to_color):
-            endpoints = plane.path.transform(plane.composed_transform()).end_points
-
-            x_coords = []
-            y_coords = []
-
-            for _, (x, y) in enumerate(endpoints):
-                x_coords.append(x)
-                y_coords.append(y)
-
-            if not x_coords or not y_coords:
-                continue
-
-            centroid_x = sum(x_coords) / len(x_coords)
-            centroid_y = sum(y_coords) / len(y_coords)
-
-            id = index + 1
-
-            text_element = self.add_text(
-                centroid_x - 4,
-                centroid_y + self.fontsize / 4,  # Adjust Y for centering
-                "*",
-                f"plane_centroid_{id}",
-                "#000000",  # Black
-            )
-            self.svg.getElementById(centroids_layer).append(text_element)
-
-            plane.set("id", f"source_plane_{id}")
-            plane.style = Style(
-                {
-                    "stroke": None,
-                    "fill": "#808080",
-                }
-            )
-            self.svg.getElementById(solution_layer).append(plane)
-
     def createRootGroup(self, id: str):
         root_group: Group = self.svg.add(Group())
         root_group.set("id", id)
@@ -1056,7 +1087,7 @@ class CreatePuzzle(EffectExtension):
         x,
         y,
         width=675,
-        height=800,
+        height=900,
         color: str = "#000",
         font_size: str = "11pt",
     ):

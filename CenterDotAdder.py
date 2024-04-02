@@ -3,93 +3,25 @@ import random
 
 import inkex
 from inkex import (
-    Boolean,
     Circle,
-    EffectExtension,
     Layer,
     Style,
 )
 from inkex.paths import Path
 
 
-# Create a class named NumberDots that inherits from inkex.EffectExtension
-class CenterDotAdder(EffectExtension):
-    # plane_fill = "#808080"
-
-    def add_arguments(self, pars):
-        pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
-        pars.add_argument(
-            "--plot_centroids",
-            type=Boolean,
-            help="Plot centroids of filled elements",
-            default=True,
-        )
-
-        pars.add_argument(
-            "--centroids_layer",
-            help="Layer to plot the centroids",
-            default="centroids_layer",
-        )
-
-        pars.add_argument(
-            "--solution_layer",
-            help="Layer to plot the solution",
-            default="solution_layer",
-        )
-
-        pars.add_argument(
-            "--clearance",
-            type=int,
-            help="Clearance around the centroid",
-            default=4,
-        )
-
-        pars.add_argument(
-            "--fraction",
-            type=int,
-            help="Fraction of the bounding box to search",
-            default=20,
-        )
-
-        pars.add_argument(
-            "--plane_fill",
-            help="Fill color of the plane",
-            default="#808080",
-            type=str,
-        )
-
-    def effect(self):
-        o = self.options
-
-        rgb_color = inkex.Color(o.plane_fill).to_rgb()
-        hex_color = "#{:02x}{:02x}{:02x}".format(*rgb_color)
-
-        layer_ids = [o.solution_layer, o.centroids_layer]
-        for layer in layer_ids:
-            elem = self.svg.getElementById(layer)
-            if elem is not None:
-                new_layer = self.svg.add(Layer())
-                new_layer.set("id", layer)
-                new_layer.set("inkscape:label", layer)
-
-        self.plot_puzzle_centroids(
-            self.options.centroids_layer,
-            self.options.solution_layer,
-            self.options.clearance,
-            self.options.fraction,
-            hex_color,
-        )
+class CenterAdder:
+    def __init__(self, svg):
+        self.svg = svg
 
     def plot_puzzle_centroids(
         self, centroids_layer, solution_layer, clearance, fraction, plane_fill
     ):
         """Plot the centroids of filled elements in the puzzle."""
-        xpath_query = f".//*[@style and contains(@style, 'fill:{plane_fill}')]"
-        planes_to_color = self.svg.xpath(xpath_query, namespaces=inkex.NSS)
+        self.ensure_layers_exist(centroids_layer, solution_layer)
 
-        if planes_to_color is None or len(planes_to_color) == 0:
-            inkex.errormsg("No filled elements found")
-            return
+        hex_color = self.rgb_to_hex(plane_fill)
+        planes_to_color = self.get_planes_to_color(hex_color)
 
         for index, plane in enumerate(planes_to_color):
             transformed_path = plane.path.transform(plane.composed_transform())
@@ -122,6 +54,21 @@ class CenterDotAdder(EffectExtension):
             plane, centroid = self.set_element_attributes(plane, centroid, id, inside)
             self.svg.getElementById(centroids_layer).append(centroid)
             self.svg.getElementById(solution_layer).append(plane)
+
+    def get_planes_to_color(self, hex_color):
+        xpath_query = f".//*[@style and contains(@style, 'fill:{hex_color}')]"
+        return self.svg.xpath(xpath_query, namespaces=inkex.NSS)
+
+    def rgb_to_hex(self, rgb_color):
+        return "#{:02x}{:02x}{:02x}".format(*inkex.Color(rgb_color).to_rgb())
+
+    def ensure_layers_exist(self, centroids_layer, solution_layer):
+        for layer in [centroids_layer, solution_layer]:
+            element = self.svg.getElementById(layer)
+            if element is not None:
+                new_layer = self.svg.add(Layer())
+                new_layer.set("id", layer)
+                new_layer.set("inkscape:label", layer)
 
     def adjust_position_in_grid(
         self, x, y, bounding_box, path_string, clearance, fraction
@@ -224,7 +171,3 @@ class CenterDotAdder(EffectExtension):
 
         # Check if the number of crossings is odd
         return num_crossings % 2 == 1
-
-
-if __name__ == "__main__":
-    CenterDotAdder().run()
