@@ -3,6 +3,7 @@ import json
 import math
 import random
 
+import inkex
 from inkex import (
     NSS,
     AbortExtension,
@@ -32,13 +33,21 @@ class CreatePuzzle(EffectExtension):
         "abcdefghijklmnopqrstuvwxyz" + "1234567890" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     )
     fontsize = ""
-    consolasFont = Style(
+    fontConsolas = Style(
         {
             "font-family": "Consolas",
             "fill-opacity": "1.0",
             "fill": "#000000",
         }
     )
+    fontGaramond = Style(
+        {
+            "font-family": "Garamond",
+            "fill-opacity": "1.0",
+            "fill": "#000000",
+        }
+    )
+
     plane_fill = "#808080"
 
     # Define method to add command-line arguments for the extension
@@ -207,11 +216,25 @@ class CreatePuzzle(EffectExtension):
             default="Copyright © Polydot Puzzles 2024",
         )
 
+        pars.add_argument(
+            "--caption",
+            type=str,
+            help="Caption for the puzzle",
+            default="Paste your caption here",
+        )
+
+        pars.add_argument(
+            "--output_format",
+            type=str,
+            help="Output format",
+            default="dev",
+        )
+
     # Define the main effect method
     def effect(self):
         so = self.options  # shorthand for self.options
-        self.consolasFont["font-weight"] = so.fontweight
-        self.consolasFont["font-size"] = self.svg.unittouu(so.fontsize)
+        self.fontConsolas["font-weight"] = so.fontweight
+        self.fontConsolas["font-size"] = self.svg.unittouu(so.fontsize)
         self.fontsize = self.svg.unittouu(so.fontsize)
         paper_size = self.get_paper_size_info(self.svg)
         source_for_puzzle = self.get_selected_elements()
@@ -259,7 +282,7 @@ class CreatePuzzle(EffectExtension):
             sorted_dots
         )
         compact_mapping = self.compress_mapping(dot_connections)
-        planes = self.count_planes(layers["centroids_layer"]["id"])
+        planes = self.count_planes(so.centroids_layer)
 
         self.annotate_source_page("puzzle_page", "Puzzle", so.page_margin)
         self.prepend_instructions_page(
@@ -267,14 +290,17 @@ class CreatePuzzle(EffectExtension):
         )
 
         left_guide: Guide = self.svg.getElementById("sequence_guide_left")
-        x_guide, y_guide = left_guide.position
+        right_guide: Guide = self.svg.getElementById("sequence_guide_right")
+        bottom_guide: Guide = self.svg.getElementById("footer_guide")
 
         self.process_puzzle_path(source_for_puzzle, layers["solution_layer"]["id"])
 
         # Plot the Puzzle Dots and Centroids
         if so.plot_dots:
             self.plot_puzzle_dots(
-                dot_connections, collisions, layers["dots_layer"]["id"]
+                dot_connections,
+                collisions,
+                layers["dots_layer"]["id"],
             )
 
         if so.plot_centroids:
@@ -291,34 +317,36 @@ class CreatePuzzle(EffectExtension):
         if so.plot_sequence:
             sequenceElement = self.plot_letter_sequence(
                 dot_connections,
-                x_guide,
-                y_guide + 150,
+                bottom_guide.position[0],
+                left_guide.position[1] + 50,
             )
-            self.svg.getElementById(layers["instructions_layer"]["id"]).append(
-                sequenceElement
-            )
+            self.svg.getElementById(so.instructions_layer).append(sequenceElement)
 
         # Add footer
         if so.plot_footer:
             self.plot_footer(
                 so.copyright_text,
-                layers["instructions_layer"]["id"],
-                x_guide,
-                y_guide + 1000,
+                so.instructions_layer,
+                bottom_guide.position[0],
+                bottom_guide.position[1],
                 paper_size,
             )
 
         self.plot_title(
-            so.title, layers["instructions_layer"]["id"], x_guide, y_guide + 100
+            so.title,
+            so.subtitle,
+            so.instructions_layer,
+            bottom_guide.position[0],
+            left_guide.position[1],
         )
-        self.plot_tagline(
-            so.subtitle, layers["instructions_layer"]["id"], x_guide + 50, y_guide + 500
+        self.plot_caption(
+            so.caption, so.instructions_layer, "7mm", bottom_guide.position[1] - 25
         )
         self.plot_difficulty_level(
             dot_connections,
-            layers["instructions_layer"]["id"],
-            x_guide + 500,
-            y_guide + 100,
+            so.instructions_layer,
+            left_guide.position[0] + 500,
+            left_guide.position[1],
         )
 
         # Add the source image to the solution layer for reference
@@ -332,38 +360,65 @@ class CreatePuzzle(EffectExtension):
         # Plot the sequence as pairs
         if so.extreme_difficulty:
             pairs = self.plot_random_sequence_pairs(dot_connections)
-            self.svg.getElementById(layers["instructions_layer"]["id"]).append(pairs)
+            self.svg.getElementById(so.instructions_layer).append(pairs)
         # Plot the compact sequence
         if so.plot_compact_sequence:
             compact_sequence = self.plot_compact_mapping(compact_mapping)
-            self.svg.getElementById(layers["instructions_layer"]["id"]).append(
-                compact_sequence
-            )
+            self.svg.getElementById(so.instructions_layer).append(compact_sequence)
         # Plot the reference sequence
         if so.plot_reference_sequence:
-            self.plot_reference_sequence(x_guide, y_guide)
+            self.plot_reference_sequence(left_guide.position[0], left_guide.position[1])
 
-        # Perform analysis and plot stats
-        self.perform_analysis(
-            dot_connections,
-            collisions,
-            sorted_dots,
-            compact_mapping,
-            lowest_distance,
-            avg_distance,
-            highest_distance,
-            planes,
-        )
-        unique_dots = self.get_unique_dots(dot_connections)
-        stats = f"{len(dot_connections)} steps, {len(unique_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes"
+        if so.output_format == "dev":
+            # Perform analysis and plot stats
+            self.perform_analysis(
+                dot_connections,
+                collisions,
+                sorted_dots,
+                compact_mapping,
+                lowest_distance,
+                avg_distance,
+                highest_distance,
+                planes,
+            )
+            unique_dots = self.get_unique_dots(dot_connections)
+            stats = f"{len(dot_connections)} steps, {len(unique_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes"
 
-        self.append_stats_page(
-            "puzzle_stats",
-            "Stats",
-            so.page_margin,
-            stats,
-            all_distances,
+            self.append_stats_page(
+                "puzzle_stats",
+                "Stats",
+                so.page_margin,
+                stats,
+                all_distances,
+            )
+
+    def plot_caption(self, caption, layer_id, x, y):
+        layer = self.svg.getElementById(layer_id)
+        caption_element = TextElement(x=str(x), y=str(y), id="caption_textbox")
+        caption_element.style = Style(
+            {
+                "font-family": "Garamond",
+                "fill-opacity": "1.0",
+                "fill": "#000000",
+                "font-size": "16pt",
+                "font-style": "italic",
+                "text-align": "center",
+                "text-anchor": "middle",
+            }
         )
+        rect = Rectangle(
+            x=str(x),
+            y=str(y),
+            width="763",
+            height="75",
+            id="caption_rect",
+        )
+
+        self.svg.defs.append(rect)
+        caption_element.set("shape-inside", f"url(#{rect.get('id')})")
+        ts = Tspan(caption)
+        caption_element.append(ts)
+        layer.append(caption_element)
 
     def get_selected_elements(self):
         # Get the selected elements, source path, or first path in the document
@@ -468,13 +523,17 @@ class CreatePuzzle(EffectExtension):
         newpage.set("margin", page_margin)
 
         left_guide: Guide = self.svg.namedview.add_guide(
-            (-(converted_width - 25), 0), (1, 0), "Sequence guide left"
+            (-(converted_width - 25), 100), (1, 0), "Sequence guide left"
         )
         left_guide.set("id", "sequence_guide_left")
         right_guide: Guide = self.svg.namedview.add_guide(
-            (-100, 0), (1, 0), "Sequence guide right"
+            (-100, 100), (1, 0), "Sequence guide right"
         )
         right_guide.set("id", "sequence_guide_right")
+        bottom_guide: Guide = self.svg.namedview.add_guide(
+            (-(converted_width - 25), 1000), (0, -1), "Footer guide"
+        )
+        bottom_guide.set("id", "footer_guide")
 
     def append_stats_page(self, page_id, page_label, page_margin, stats, all_distances):
         connections_str = self.svg.getElementById("sequence_string_textbox_tspan").text
@@ -511,7 +570,7 @@ class CreatePuzzle(EffectExtension):
                 y_guide + 50,
                 width="698",
                 height="1000",
-                font_size="10px",
+                font_size="6pt",
             )
         )
 
@@ -556,7 +615,7 @@ class CreatePuzzle(EffectExtension):
                     y_pos,
                     width="700",
                     height="1000",
-                    font_size="8px",
+                    font_size="6pt",
                 )
             )
             y_pos += 20  # Increase y coordinate for next appended element
@@ -641,7 +700,7 @@ class CreatePuzzle(EffectExtension):
         self.svg.getElementById(f"black_dot_{left_dot}").style = markStyle
         self.svg.getElementById(f"black_dot_{right_dot}").style = markStyle
 
-    def plot_title(self, title_field: str, layer_id, x, y):
+    def plot_title(self, title_field: str, subtitle: str, layer_id: str, x, y):
         layer = self.svg.getElementById(layer_id)
         title_element = TextElement(x=str(x), y=str(y), id="title_textbox")
 
@@ -651,6 +710,9 @@ class CreatePuzzle(EffectExtension):
             title = f"Polydot {docname[:2]}"
         else:
             title = title_field
+
+        if subtitle:
+            title = title + f" | {subtitle}"
 
         title_element.text = title
         title_element.style = Style(
@@ -663,22 +725,6 @@ class CreatePuzzle(EffectExtension):
             }
         )
         layer.append(title_element)
-
-    def plot_tagline(self, subtitle: str, layer_id, x, y):
-        layer = self.svg.getElementById(layer_id)
-        subtitle_element = TextElement(x=str(x), y=str(y), id="subtitle_textbox")
-        subtitle_element.text = subtitle
-        subtitle_element.style = Style(
-            {
-                "font-family": "Garamond",
-                "fill-opacity": "1.0",
-                "fill": "#000000",
-                "font-size": "32pt",
-                "font-weight": "bold",
-                "font-style": "italic",
-            }
-        )
-        layer.append(subtitle_element)
 
     def plot_footer(
         self,
@@ -726,13 +772,14 @@ class CreatePuzzle(EffectExtension):
             brain_character = PathElement(id=f"brain_character_{i}")
             brain_character.path = Path(
                 "m 15.3568 5.4864 q 0.2066 -0.2066 0.2066 -0.5016 q 0 -0.2949 -0.2066 -0.5016 q -0.4719 -0.4719 -1.1211 -0.7474 q -0.6393 -0.285 -1.367 -0.285 q -0.7276 0 -1.3666 0.285 q -0.6393 0.2751 -1.1112 0.7474 q -0.2066 0.2066 -0.2066 0.5016 q 0 0.2949 0.2066 0.5016 q 0.2066 0.2066 0.4917 0.2066 q 0.2949 0 0.5115 -0.2066 q 0.6097 -0.6097 1.475 -0.6097 q 0.8654 0 1.4849 0.6097 q 0.2066 0.2066 0.5016 0.2066 q 0.2949 0 0.5016 -0.2066 z m -8.2304 -0.6785 q 0.2557 -0.1477 0.5408 -0.0689 q 0.285 0.0689 0.4327 0.3246 q 0.1477 0.2557 0.0689 0.5408 q -0.0689 0.2755 -0.3246 0.4327 q -0.7569 0.4327 -1.3472 1.0914 q -0.5899 0.6489 -0.9537 1.4454 q -0.3737 0.8159 -0.4719 1.711 q -0.0304 0.2949 -0.2656 0.4818 q -0.2261 0.177 -0.521 0.1477 q -0.285 -0.0304 -0.4719 -0.2557 q -0.1869 -0.2359 -0.1477 -0.5309 q 0.118 -1.1211 0.5899 -2.1437 q 0.4521 -0.9933 1.1896 -1.8092 l 0.0023 0.0004 q 0.7375 -0.8159 1.6813 -1.3666 z m 10.7082 7.9157 q 0 0.4426 -0.3147 0.7569 q -0.3147 0.3048 -0.7474 0.3048 l -2.7324 0.0013 q 0.2458 -0.521 0.2458 -1.0618 q 0 -0.2949 -0.2066 -0.5016 q -0.2066 -0.2066 -0.5016 -0.2066 q -0.285 0 -0.5016 0.2066 q -0.2066 0.2066 -0.2066 0.5016 q 0 0.4426 -0.3147 0.7569 q -0.3048 0.3048 -0.7474 0.3048 h -1.5424 q -0.2949 0 -0.5016 0.2066 q -0.2066 0.2066 -0.2066 0.5016 q 0 0.2949 0.2066 0.5016 q 0.2066 0.2066 0.5016 0.2066 l 4.3764 -0.0008 q 0.4426 0 0.7474 0.3147 q 0.3147 0.3147 0.3246 0.7474 q 0 0.2949 0.2066 0.5111 q 0.2066 0.2066 0.5016 0.2066 q 0.285 0 0.4917 -0.2066 q 0.2162 -0.2162 0.2162 -0.5111 q 0 -0.5507 -0.2557 -1.0717 q 0.6587 -0.019 1.1995 -0.3539 q 0.5408 -0.344 0.8555 -0.8947 q 0.3246 -0.5507 0.3246 -1.2193 q 0 -0.2949 -0.2066 -0.5016 q -0.2066 -0.2066 -0.5016 -0.2066 q -0.2949 0 -0.5016 0.2066 q -0.2066 0.2066 -0.2066 0.5016 z m 5.6639 -0.5606 l 0.0023 1.6235 q 0 0.0304 0 0.0788 q -0.0114 0.0392 -0.0114 0.0689 q 0.0114 0.059 0.0114 0.0788 q 0 0.0887 0 0.1279 q 0 0.0689 -0.0392 0.2066 l -0.0027 0.0023 q -0.0304 0.2755 -0.0788 0.5408 q -0.0392 0.2656 -0.118 0.521 q -0.3147 1.0621 -1.0028 1.9173 q -0.6785 0.8456 -1.6421 1.3864 q -0.9537 0.5408 -2.0748 0.6884 l 0.0034 1.8876 q 0 0.3539 -0.3345 0.4917 q -0.3246 0.1378 -0.5705 -0.118 l -2.2126 -2.2027 l -5.0378 -0.0015 q -1.0914 0 -2.0257 -0.462 q -0.9244 -0.462 -1.5732 -1.2585 q -0.6393 -0.8064 -0.8753 -1.829 l -0.884 -0.0013 q -1.1603 0 -2.114 -0.5606 q -0.9537 -0.5705 -1.5241 -1.5241 q -0.5705 -0.9636 -0.5705 -2.1239 q 0 -2.2126 0.8258 -4.1397 q 0.8357 -1.937 2.3009 -3.4022 q 1.4652 -1.4652 3.3923 -2.291 q 1.937 -0.8357 4.1496 -0.8357 l 0.8772 0.0011 q 2.1437 0 4.0412 0.7573 q 1.8978 0.7474 3.3824 2.0847 q 1.4945 1.3373 2.4386 3.1271 q 0.9537 1.7898 1.19 3.8741 q 0.0392 0.3147 0.059 0.6393 q 0.019 0.3147 0.019 0.6489 z m -1.593 2.8416 q 0.1477 -0.5016 0.1671 -1.0717 q -0.0392 -0.7474 -0.344 -1.3963 q -0.2949 -0.6587 -0.7866 -1.1504 q -0.5309 -0.5309 -1.2391 -0.8357 q -0.7078 -0.3048 -1.5142 -0.3048 q -0.0689 0 -0.1967 -0.0392 l -0.0091 0.0027 q -0.5998 0.5115 -1.3666 0.8064 q -0.7569 0.2949 -1.6124 0.2949 q -0.2949 0 -0.5111 -0.2066 q -0.2066 -0.2066 -0.2066 -0.5016 q 0 -0.2949 0.2066 -0.5016 q 0.2162 -0.2066 0.5111 -0.2066 q 0.6587 0 1.2391 -0.2458 q 0.58 -0.2557 1.0127 -0.6884 q 0.4327 -0.4327 0.6785 -1.0127 q 0.2557 -0.58 0.2557 -1.2486 q 0 -0.285 0.2066 -0.4917 q 0.2066 -0.2162 0.5016 -0.2162 q 0.2949 0 0.5016 0.2162 q 0.2066 0.2066 0.2066 0.4917 q 0 1.1801 -0.5606 2.2027 q 0.8258 0.1378 1.5534 0.5115 q 0.7276 0.3737 1.3076 0.9343 q -0.3246 -1.6813 -1.1801 -3.1172 q -0.8555 -1.4454 -2.1338 -2.5174 q -1.2783 -1.0717 -2.8614 -1.6619 q -1.5831 -0.5998 -3.363 -0.5998 l -0.878 -0.0011 q -1.9173 0 -3.599 0.7276 q -1.6813 0.7276 -2.9402 1.9861 q -1.2585 1.2585 -1.9861 2.9402 q -0.7276 1.6813 -0.7276 3.599 q 0 0.5804 0.2162 1.0914 q 0.2261 0.5016 0.5998 0.8848 q 0.3836 0.3836 0.8848 0.5998 q 0.5115 0.2162 1.0914 0.2162 l 0.8095 -0.0005 q 0.118 -0.7866 0.462 -1.4849 q 0.344 -0.6979 0.8753 -1.2486 q -0.0788 -0.4327 -0.3935 -0.7474 q -0.2066 -0.2066 -0.2066 -0.5016 q 0 -0.2949 0.2066 -0.5016 q 0.2162 -0.2066 0.5016 -0.2066 q 0.2949 0 0.5016 0.2066 q 0.3539 0.3539 0.58 0.8456 q 0.5309 -0.2949 1.1306 -0.4521 q 0.5998 -0.1572 1.2486 -0.1572 q 0.2949 0 0.5016 0.2066 q 0.2066 0.2066 0.2066 0.5016 q 0 0.2949 -0.2066 0.5016 q -0.2066 0.2066 -0.5016 0.2066 q -0.7375 0 -1.3864 0.285 q -0.6393 0.2751 -1.1211 0.7569 q -0.462 0.462 -0.7375 1.0816 q -0.2656 0.6097 -0.285 1.3076 l -0.0023 0.051 q 0.0788 0.8064 0.5111 1.4652 q 0.4426 0.6587 1.1306 1.0522 q 0.6983 0.3836 1.534 0.3836 l 7.4457 -0.0012 q 0.9636 0 1.7898 -0.3935 q 0.8258 -0.3935 1.4161 -1.0816 q 0.5998 -0.6884 0.8654 -1.5633 z"
-            ).translate(45 + (i * 25) + x, y)
+            ).translate(60 + (i * 25) + x, y)
 
+            width = brain_character.path.bounding_box().width
             height = brain_character.path.bounding_box().height
-            brain_character.path = Path(brain_character.path).translate(0, -height)
+            brain_character.path = Path(brain_character.path).translate(-width, -height)
 
             brain_character.style = (
-                Style({"fill": "#d3d3d3"}) if i > level else Style({"fill": "#000000"})
+                Style({"display": "none"}) if i < level else Style({"fill": "#000000"})
             )
             grouped_brains.append(brain_character)
 
@@ -784,11 +831,13 @@ class CreatePuzzle(EffectExtension):
     def count_planes(self, puzzle_planes_id):
         processed_planes = self.svg.getElementById(puzzle_planes_id)
         xpath_query = f".//*[@style and contains(@style, 'fill:{self.plane_fill}')]"
-        red_planes = self.svg.xpath(xpath_query)
-        number_of_red_planes = len(red_planes) if red_planes is not None else 0
+        planes_with_fill = self.svg.xpath(xpath_query)
+        number_of_f_planes = (
+            len(planes_with_fill) if planes_with_fill is not None else 0
+        )
         number_of_planes = len(processed_planes) if processed_planes is not None else 0
 
-        return number_of_planes or number_of_red_planes
+        return number_of_planes or number_of_f_planes
 
     def createRootGroup(self, id: str):
         root_group: Group = self.svg.add(Group())
@@ -821,7 +870,7 @@ class CreatePuzzle(EffectExtension):
         )
         text_element.set("shape-inside", f"url(#{rect.get('id')})")
 
-        text_element.style = self.consolasFont
+        text_element.style = self.fontConsolas
         text_element.style["fill"] = "#000000"
 
         # Add the text element to the document
@@ -868,8 +917,14 @@ class CreatePuzzle(EffectExtension):
 
         return unique_dots
 
-    def plot_puzzle_dots(self, mapping: list, collisions: list, layer_id):
+    def plot_puzzle_dots(
+        self,
+        mapping: list,
+        collisions: list,
+        layer_id,
+    ):
         """Plot the mapping to the canvas"""
+
         unique_dots = []
 
         # Remove duplicate dots
@@ -913,7 +968,7 @@ class CreatePuzzle(EffectExtension):
             text_element_with_label.set("text-anchor", "middle")
             text_element_with_label.set("dominant-baseline", "middle")
             text_element_with_label.set("id", f"text_label_{step['letter_label']}")
-            text_element_with_label.style = self.consolasFont
+            text_element_with_label.style = self.fontConsolas
             text_element_with_label.set("letter-spacing", "1px")
             #  make red when collision
             if collision_exists:
@@ -1074,7 +1129,7 @@ class CreatePuzzle(EffectExtension):
         elem = TextElement(x=str(x), y=str(y))
         elem.text = str(text)
         elem.set("id", id)
-        elem.style = self.consolasFont
+        elem.style = self.fontConsolas
         elem.style["fill"] = color
         return elem
 
@@ -1089,6 +1144,7 @@ class CreatePuzzle(EffectExtension):
         height=900,
         color: str = "#000",
         font_size: str = "11pt",
+        align: str = "left",
     ):
         """Add a text element inside a rectangle at the given location with specified properties"""
 
@@ -1096,6 +1152,13 @@ class CreatePuzzle(EffectExtension):
         rect = Rectangle(
             x=str(x), y=str(y), width=str(width), height=str(height), id=rect_id
         )
+        if align == "center":
+            rect.style = Style(
+                {
+                    "text-align": align,
+                    "text-anchor": "middle",
+                }
+            )
 
         # Add the rectangle to the <defs> section
         self.svg.defs.append(rect)
@@ -1105,7 +1168,7 @@ class CreatePuzzle(EffectExtension):
         text_element.set(
             "shape-inside", f"url(#{rect_id})"
         )  # Reference the rectangle as the shape inside the text
-        text_element.style = self.consolasFont
+        text_element.style = self.fontConsolas
         text_element.style["fill"] = color
         text_element.style["font-size"] = font_size
         tspan = Tspan(text_string)

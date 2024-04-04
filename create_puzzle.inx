@@ -7,13 +7,15 @@
 
             <label appearance="header">Annotation</label>
             <param name="page_margin" type="string"
-                gui-text="Page margin:" gui-description="Margin of the page.">7mm 7mm 7mm 7mm</param>
+                gui-text="Page margin" gui-description="Margin of the page.">7mm 7mm 7mm 7mm</param>
             <param name='title' type='string' gui-text='Title:'
                 gui-description='Title of the dot-to-dot puzzle. If empty, the title will be derived from the first two digits of the file name and used as Puzzle #.'></param>
-            <param name="subtitle" type="string" gui-text="Subtitle:"
+            <param name="subtitle" type="string" gui-text="Subtitle"
                 gui-description="Subtitle of the dot-to-dot puzzle."></param>
+            <param name="caption" type="string" gui-text="Caption"
+                gui-description="Caption of the dot-to-dot puzzle."></param>
 
-            <param name="copyright_text" type="string" gui-text="Copyright text:"
+            <param name="copyright_text" type="string" gui-text="Copyright text"
                 gui-description="Text to be added as copyright.">Copyright © Polydot Puzzles 2024</param>
             <param name="plot_footer" type="bool" gui-text="Add footer"
                 gui-description="If checked, the copyright will be added to the output.">
@@ -36,14 +38,14 @@
             <separator />
 
             <label appearance="header">Dot plot</label>
-            <param name="start" type="int" min="0" max="1000" gui-text="Starting dot number:"
+            <param name="start" type="int" min="0" max="1000" gui-text="Starting dot number"
                 gui-description="First number in the sequence, assigned to the first node of the path.">
                 1</param>
             <param name="minimal_distance" type="int" precision="1" min="0" max="20"
-                appearance="full" gui-text="Minimal distance between dots:">6</param>
-            <param name="fontsize" type="string" gui-text="Font size:"
+                appearance="full" gui-text="Minimal distance between dots">6</param>
+            <param name="fontsize" type="string" gui-text="Font size"
                 gui-description="Size of the dot labels">6pt</param>
-            <param name="fontweight" type="optiongroup" gui-text="Font weight:" appearance="combo"
+            <param name="fontweight" type="optiongroup" gui-text="Font weight" appearance="combo"
                 gui-description="Style dot labels">
                 <option value="normal" gui-text="Normal">Normal</option>
                 <option value="bold" gui-text="Bold">Bold</option>
@@ -51,20 +53,18 @@
             <separator />
 
             <label appearance="header">Centroid plot</label>
-            <param name="plot_centroids" type="bool" gui-text="Plot centroids"
-                gui-description="If checked, the centroids of planes filled with color red (#ff0000) will be plotted.">
-                true</param>
+
             <param name="clearance" type="int" precision="1" min="0" max="20" appearance="full"
-                gui-text="Clearance:">4</param>
+                gui-text="Clearance">4</param>
             <param name="fraction" type="int" precision="10" min="5" max="100" appearance="full"
-                gui-text="Fraction with which to divide the bounding box:">20</param>
+                gui-text="Fraction with which to divide the bounding box">20</param>
             <param name="plane_fill" type="color" gui-text="Plane fill" default="#808080"
                 gui-description="Color of the planes from which the centroids are calculated.">
                 #808080</param>
 
             <label appearance="header">Instructions</label>
             <param name="plot_centroids" type="bool" gui-text="Plot centroids"
-                gui-description="If checked, the centroids of planes filled with color red (#ff0000) will be plotted.">
+                gui-description="If checked, the centroids of planes filled with picked will be plotted.">
                 true</param>
             <param name="plot_dots" type="bool" gui-text="Plot dots"
                 gui-description="If checked, the dots will be plotted.">true</param>
@@ -72,6 +72,8 @@
                 gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted.">
                 true</param>
             <separator />
+
+
         </page>
 
         <page name="Advanced" gui-text="Advanced">

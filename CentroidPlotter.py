@@ -15,7 +15,12 @@ class CentroidPlotter:
         self.svg = svg
 
     def plot_puzzle_centroids(
-        self, centroids_layer, solution_layer, clearance, fraction, plane_fill
+        self,
+        centroids_layer,
+        solution_layer,
+        clearance,
+        fraction,
+        plane_fill,
     ):
         """Plot the centroids of filled elements in the puzzle."""
         c_layer, s_layer = self.ensure_layers_exist(centroids_layer, solution_layer)
