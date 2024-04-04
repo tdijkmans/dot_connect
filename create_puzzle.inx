@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-    <name>Create dot-to-dot puzzle</name>
+    <name>03 Create dot-to-dot puzzle</name>
     <id>org.inkscape.filter.create_puzzle</id>
     <param name="tab" type="notebook">
         <page name="Options" gui-text="Options">
@@ -72,6 +72,13 @@
                 gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted.">
                 true</param>
             <separator />
+
+            <label appearance="header">Output</label>
+            <param name="paper_size" type="optiongroup" gui-text="Paper size" appearance="combo"
+                gui-description="Size of the paper.">
+                <option value="A4" gui-text="A4">A4</option>
+                <option value="US Letter" gui-text="US Letter">US Letter</option>
+            </param>
 
 
         </page>

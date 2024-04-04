@@ -13,6 +13,7 @@ from inkex import (
     Group,
     Guide,
     Layer,
+    Page,
     PathElement,
     Rectangle,
     Style,
@@ -224,10 +225,10 @@ class CreatePuzzle(EffectExtension):
         )
 
         pars.add_argument(
-            "--output_format",
+            "--paper_size",
             type=str,
-            help="Output format",
-            default="dev",
+            help="Size of the paper",
+            default="A4",
         )
 
     # Define the main effect method
@@ -269,6 +270,10 @@ class CreatePuzzle(EffectExtension):
                 "create": True,
             },
         }
+
+        self.svg.set("width", "210mm")
+        self.svg.set("height", "297mm")
+
         self.layers = layers
         self.manage_layers(layers)
 
@@ -369,28 +374,27 @@ class CreatePuzzle(EffectExtension):
         if so.plot_reference_sequence:
             self.plot_reference_sequence(left_guide.position[0], left_guide.position[1])
 
-        if so.output_format == "dev":
-            # Perform analysis and plot stats
-            self.perform_analysis(
-                dot_connections,
-                collisions,
-                sorted_dots,
-                compact_mapping,
-                lowest_distance,
-                avg_distance,
-                highest_distance,
-                planes,
-            )
-            unique_dots = self.get_unique_dots(dot_connections)
-            stats = f"{len(dot_connections)} steps, {len(unique_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes"
+        # Perform analysis and plot stats
+        self.perform_analysis(
+            dot_connections,
+            collisions,
+            sorted_dots,
+            compact_mapping,
+            lowest_distance,
+            avg_distance,
+            highest_distance,
+            planes,
+        )
+        unique_dots = self.get_unique_dots(dot_connections)
+        stats = f"{len(dot_connections)} steps, {len(unique_dots)} unique dots, {round(lowest_distance)} min {round(avg_distance)} avg {round(highest_distance)} max, {planes} planes"
 
-            self.append_stats_page(
-                "puzzle_stats",
-                "Stats",
-                so.page_margin,
-                stats,
-                all_distances,
-            )
+        self.append_stats_page(
+            "puzzle_stats",
+            "Stats",
+            so.page_margin,
+            stats,
+            all_distances,
+        )
 
     def plot_caption(self, caption, layer_id, x, y):
         layer = self.svg.getElementById(layer_id)
@@ -499,11 +503,13 @@ class CreatePuzzle(EffectExtension):
             layer = self.svg.getElementById(layer_id)
             layer.append(puzzle_path)
 
-    def annotate_source_page(self, page_id, page_label, page_margin):
-        first_page = self.document.xpath("//inkscape:page", namespaces=NSS)[0]
+    def annotate_source_page(self, page_id: str, page_label: str, page_margin: str):
+        first_page: Page = self.document.xpath("//inkscape:page", namespaces=NSS)[0]
         first_page.set("id", page_id)
         first_page.set("inkscape:label", page_label)
         first_page.set("margin", page_margin)
+        first_page.set("width", self.svg.get("width"))
+        first_page.set("height", self.svg.get("height"))
 
     def prepend_instructions_page(self, page_id, page_label, page_margin):
         doc_width = self.svg.get("width")

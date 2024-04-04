@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-  <name>Plot centroids</name>
+  <name>02 Plot centroids</name>
   <id>org.inkscape.filter.plot_centroids</id>
   <param name="tab" type="notebook">
     <page name="Options" gui-text="Options">
