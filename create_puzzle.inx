@@ -22,21 +22,6 @@
                 true</param>
             <separator />
 
-            <label appearance="header">Layer identification</label>
-            <param
-                gui-description="Name of the layer where the centroids will be plotted."
-                name="centroids_layer" type="string" gui-text="Centroids layer">centroids_layer</param>
-            <param gui-description="Name of the layer where the solution will be plotted."
-                name="solution_layer" type="string" gui-text="Solution layer">solution_layer</param>
-            <param name="dots_layer" type="string" gui-text="Dots layer"
-                gui-description="Name of the layer where the dots will be plotted.">dots_layer</param>
-            <param gui-description="Name of the layer where the instructions will be plotted."
-                type="string" name="instructions_layer"
-                gui-text="Instructions layer">instructions_layer</param>
-            <param gui-description="Name of the layer where the statistics will be plotted."
-                name="stats_layer" type="string" gui-text="Stats layer">stats_layer</param>
-            <separator />
-
             <label appearance="header">Dot plot</label>
             <param name="start" type="int" min="0" max="1000" gui-text="Starting dot number"
                 gui-description="First number in the sequence, assigned to the first node of the path.">
@@ -85,12 +70,7 @@
 
         <page name="Advanced" gui-text="Advanced">
             <label appearance="header">Advanced options</label>
-            <param name="plot_compact_sequence" type="bool" gui-text="Plot compact sequence"
-                gui-description="If checked, only numbers that deviate from the reference sequence will be plotted.">
-                false</param>
-            <param name="extreme_difficulty" type="bool" gui-text="Extreme difficulty"
-                gui-description="If checked, output will output line segments connecting the dots in a random order.">
-                false</param>
+
             <param name="plot_reference_sequence" type="bool" gui-text="Plot reference sequence"
                 gui-description="If checked, the sequence of numbers assigned to the nodes will be plotted in a compact form.">
                 false</param>
