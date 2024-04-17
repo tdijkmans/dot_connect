@@ -59,8 +59,6 @@ class CreatePuzzle(EffectExtension):
         self.fontConsolas["font-weight"] = so.fontweight
         self.fontConsolas["font-size"] = so.fontsize
 
-        # Clean up defs from previous runs
-        self.svg.defs.clear()
         layers, pages, guides, paper = setup(self, so)
         self.layers = layers
         self.pages = pages
@@ -118,17 +116,12 @@ class CreatePuzzle(EffectExtension):
             so.subtitle,
         )
         self.plot_caption(so.caption)
-        self.plot_difficulty_level(dot_connections)
-
-        # # Add the source image to the solution layer for reference
-        # images = self.document.xpath("//svg:image", namespaces=NSS)
-        # if images and len(images) > 0:
-        #     source_image = images[0]
-        #     source_image.set("id", "source_image")
-        #     self.svg.getElementById(layers["solution_layer"]["id"]).append(source_image)
+        if so.puzzle_level:
+            self.plot_difficulty_level(so.puzzle_level)
+        else:
+            self.plot_difficulty_level(level=(len(dot_connections) // 200) + 2)
 
         # ADVANCED OPTIONS
-
         if so.plot_reference_sequence:
             self.plot_reference_sequence()
 
@@ -141,6 +134,8 @@ class CreatePuzzle(EffectExtension):
             avg_distance,
             highest_distance,
             planes,
+            so.title,
+            so.subtitle,
         )
 
     def plot_caption(self, caption):
@@ -216,6 +211,8 @@ class CreatePuzzle(EffectExtension):
         avg_distance,
         highest_distance,
         planes,
+        title,
+        subtitle,
     ):
         # Combine mappings and write data to a file
         current_file_name = self.svg.get("sodipodi:docname", "")  # Get doc name
@@ -232,19 +229,15 @@ class CreatePuzzle(EffectExtension):
             "sequence": sequence,
             "stats": stats,
         }
-        self.append_stats_page(stats, sorted_dots)
+        self.append_stats_page(stats, sorted_dots, title, subtitle, output_name)
 
         # Write combined mappings to a single JSON file
-        self.write_mappings_to_file(mappings, f"{output_name}_combined_mappings.json")
+        # self.write_mappings_to_file(mappings, f"{output_name}_combined_mappings.json")
 
     def process_puzzle_path(self, selected_path, rgb_color):
         hex_color = "#{:02x}{:02x}{:02x}".format(*inkex.Color(rgb_color).to_rgb())
         xpath_query = f".//*[@style and contains(@style, 'fill:{hex_color}')]"
         planes_to_color = self.svg.xpath(xpath_query, namespaces=inkex.NSS)
-        # # move the planes_to_color with the puzzle_path
-        # for plane in planes_to_color:
-        #     inkex.debug(f"plane: {plane}")
-        #     plane.transform = f"translate({100}, {100})"
 
         puzzle_path = selected_path[0]
         puzzle_path.set("id", "source_path")
@@ -279,7 +272,7 @@ class CreatePuzzle(EffectExtension):
         first_page.set("width", self.svg.get("width"))
         first_page.set("height", self.svg.get("height"))
 
-    def append_stats_page(self, stats, sorted_dots):
+    def append_stats_page(self, stats, sorted_dots, title, subtitle, number):
         connections_str = self.svg.getElementById("sequence_string_textbox_tspan").text
         xl, y = self.svg.getElementById("guide_summary").position
         xr, _ = self.svg.getElementById("stats_guide_right").position
@@ -298,6 +291,21 @@ class CreatePuzzle(EffectExtension):
             )
         )
 
+        guide_puzzle_title = self.svg.getElementById("guide_puzzle_title")
+        x, y = guide_puzzle_title.position
+        self.svg.getElementById("stats_layer").append(
+            self.add_text_in_rect(
+                f"Nr: {number}\n Title: {title}\nSubtitle: {subtitle}\n",
+                "puzzle_data_textbox",
+                "puzzle_data_rect",
+                x=str(x),
+                y=str(y),
+                width=str(width),
+                height="40",
+                font_size="6pt",
+            )
+        )
+
         self.make_histogram(sorted_dots, 10)
         self.make_connections_histogram(connections_str)
 
@@ -306,12 +314,10 @@ class CreatePuzzle(EffectExtension):
         for i in range(len(sorted_dots) - 1):
             dot1 = sorted_dots[i]
             dot2 = sorted_dots[i + 1]
-            distance = math.sqrt(
-                (dot1["x"] - dot2["y"]) ** 2 + (dot1["y"] - dot2["y"]) ** 2
-            )
-            distances.append(distance)
-        # Find the minimum and maximum distances
+            d = math.sqrt((dot1["x"] - dot2["x"]) ** 2 + (dot1["y"] - dot2["y"]) ** 2)
+            distances.append(d)
 
+        # Find the minimum and maximum distances
         min_distance = min(distances)
         max_distance = max(distances)
 
@@ -322,9 +328,9 @@ class CreatePuzzle(EffectExtension):
         distance_bins = {min_distance + i * bin_width: 0 for i in range(num_bins)}
 
         # Count occurrences within each bin
-        for distance in distances:
+        for d in distances:
             for bin_start, bin_end in distance_bins.items():
-                if bin_start <= distance < bin_start + bin_width:
+                if bin_start <= d < bin_start + bin_width:
                     distance_bins[bin_start] += 1
 
         # Create a group for the histogram
@@ -334,26 +340,38 @@ class CreatePuzzle(EffectExtension):
         # Append text elements for each bin to stats_layer
         self.svg.getElementById("stats_layer").append(histogram_group)
         x, y = self.svg.getElementById("guide_histogram").position
-        y_pos = y
-        for distance, count in sorted(distance_bins.items()):
-            bin_width_text = f"{round(distance)} - {round(distance + bin_width)}"
-            histogram_text = "|" * count
 
-            self.svg.getElementById("histogram_group").append(
-                self.add_text_in_rect(
-                    f"{bin_width_text} {histogram_text}",
-                    f"distance_textbox_{round(distance)}",  # Unique ID for each text element
-                    f"distance_rect_{round(distance)}",  # Unique ID for each rectangle
-                    x,
-                    y_pos,
-                    width="700",
-                    height="1000",
-                    font_size="6pt",
-                )
+        for bin_start, count in sorted(distance_bins.items()):
+            bin_end = bin_start + bin_width
+            bin_width_text = f"{round(bin_start, 2)} - {round(bin_end, 2)} ({count})"
+            label_text = str(round(bin_start))
+
+            histogram_bar = Rectangle(
+                x=str(x),
+                y=str(y),
+                width=str(count / len(distances) * 100),
+                fill="lightblue",
+                height="10",
+                id=f"distance_bar_{label_text}",
             )
-            y_pos += 20  # Increase y coordinate for next appended element
 
-    def make_connections_histogram(self, connections_str, max_repeat=2):
+            label = self.add_text_in_rect(
+                f"{bin_width_text}",
+                f"distance_textbox_{label_text}",
+                f"distance_rect_{label_text}",
+                x,
+                y,
+                width="700",
+                height="1000",
+                font_size="6pt",
+            )
+
+            self.svg.getElementById("histogram_group").append(histogram_bar)
+            self.svg.getElementById("histogram_group").append(label)
+
+            y += 20  # Increase y coordinate for next appended element
+
+    def make_connections_histogram(self, connections_str: str):
         x, y = self.svg.getElementById("guide_connections").position
         text_element = TextElement(
             x="",
@@ -366,65 +384,59 @@ class CreatePuzzle(EffectExtension):
                 "font-size": "10pt",
             }
         )
-        connections_count = {}
+        cnx_count = {}
 
         # Split the sequence into individual connections
-        connections = connections_str.split()
-        singular_connections = 0
-        repeating_connections = 0
+        cnxs = connections_str.split()
+        singular_cnxs = 0
 
         # Iterate over each connection
-        for i in range(len(connections) - 1):
-            connection = sorted([connections[i], connections[i + 1]])
-            connection = " ".join(connection)
+        for i in range(len(cnxs) - 1):
+            cnx = sorted([cnxs[i], cnxs[i + 1]])
+            cnx = " ".join(cnx)
+            cnx_count[cnx] = cnx_count.get(cnx, 0) + 1
+            if cnx_count[cnx] == 1:
+                singular_cnxs += 1
 
-            # Count the occurrence of the connection
-            connections_count[connection] = connections_count.get(connection, 0) + 1
-
-            if connections_count[connection] == 1:
-                singular_connections += 1
-
-        # Sort connections by totals in descending order
-        sorted_connections = sorted(
-            connections_count.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_cnxs = sorted(cnx_count.items(), key=lambda x: x[1], reverse=True)
+        cnxs_by_count = {}
+        for cnx, count in sorted_cnxs:
+            cnxs_by_count[count] = cnxs_by_count.get(count, [])
+            cnxs_by_count[count].append(cnx)
 
         # Plotting connections after all iterations
-        for connection, count in sorted_connections:
-            if count > max_repeat:
-                repeating_connections += 1
-                text_element.append(
-                    Tspan(
-                        f"{connection} : {count * '•'}\n",
-                        x=str(x),
-                        y=str(y + repeating_connections * 20),
-                        id=f"connection_{connection}",
-                    )
-                )
-                self.mark_connection(connection)
+        for cnx, count in sorted_cnxs:
+            self.mark_connection(cnx, count)
 
-        text_element.append(
-            Tspan(
-                f"Repeating connections (above {max_repeat}): {repeating_connections}\n",
-                x=str(x),
-                y=str(y + (repeating_connections + 1) * 20),
-                id=f"repeating_connections_{repeating_connections}",
-                font_weight="bold",
+        # Plotting connections grouped by count
+        for count, cnxs in cnxs_by_count.items():
+            count_str = f"{count}({len(cnxs)}) {cnxs}\n"
+            if len(count_str) > 10:
+                count_str = f"{count}({len(cnxs)}) {cnxs[:10]}...\n"
+            # increase the alarm color per count
+            alarming_reds = ["green", "orange", "red"]
+            if count == 1:
+                count_str = f"{count}({len(cnxs)})\n"
+
+            text_element.append(
+                Tspan(
+                    count_str,
+                    x=str(x),
+                    y=str(y + count * 20),
+                    id=f"{count}_connections",
+                    fill=alarming_reds[min(count - 1, 2)],
+                )
             )
-        )
-        text_element.append(
-            Tspan(
-                f"Singular connections: {singular_connections}\n",
-                x=str(x),
-                y=str(y),
-                id=f"singular_connections_{singular_connections}",
-                font_weight="bold",
-            )
-        )
 
         self.svg.getElementById("stats_layer").append(text_element)
 
-    def mark_connection(self, connection, color="#ff0000"):
+    def mark_connection(self, connection, count):
+        color = "none"
+        if count > 1:
+            color = "orange"
+        if count > 2:
+            color = "red"
+
         left_dot, right_dot = connection.split()
         markStyle = Style({"stroke": color, "stroke-width": "2pt"})
 
@@ -490,9 +502,9 @@ class CreatePuzzle(EffectExtension):
         else:
             return f"{svg.get('width')} x {svg.get('height')}"
 
-    def plot_difficulty_level(self, dot_connections):
+    def plot_difficulty_level(self, level: int):
         # Calculate the difficulty level based on the number of steps
-        level = (len(dot_connections) // 200) + 1
+
         grouped_brains = Group()
         grouped_brains.set("id", "grouped_brains")
 
@@ -510,10 +522,11 @@ class CreatePuzzle(EffectExtension):
             _, y = self.svg.getElementById("guide_title").position
             x, _ = self.svg.getElementById("guide_sequence").position
 
-            brain_character.transform = f"translate({x - ((i+1) * 25)}, {y - dy})"
+            brain_character.transform = f"translate({x - ((i+1) * 25)}, {y-dy + 4})"
 
             brain_character.style = (
-                Style({"display": "none"})
+                # white
+                Style({"fill": "#ffffff"})
                 if i + 1 > level
                 else Style({"fill": "#000000"})
             )
@@ -920,6 +933,14 @@ class CreatePuzzle(EffectExtension):
             if item["x"] == X and item["y"] == Y:
                 return item["letter_label"]
         return None
+
+    def cleanup(self):
+        # Add the source image to the solution layer for reference
+        images = self.document.xpath("//svg:image", namespaces=NSS)
+        if images and len(images) > 0:
+            source_image = images[0]
+            source_image.set("id", "source_image")
+            self.svg.getElementById("solution_layer").append(source_image)
 
 
 # Entry point of the script

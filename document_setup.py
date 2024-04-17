@@ -1,11 +1,14 @@
 import inkex.utils
-from inkex import Page
+from inkex import Guide, Page
 from inkex.base import ISVGDocumentElement
 from inkex.elements import Layer
 
 
 def setup(self, so):
     svg: ISVGDocumentElement = self.svg
+
+    # Clean up defs from previous runs
+    svg.defs.clear()
 
     layers = {
         "solution_layer": {
@@ -153,12 +156,19 @@ def setup(self, so):
             guides.append(
                 (
                     svg.namedview.add_guide(
-                        (r_x - 2.5 * pa, 5 * pa), (0, -1), "Instructions guide sequence"
+                        (r_x - 3 * pa, 5 * pa), (0, -1), "Instructions guide sequence"
                     ).set("id", "guide_sequence"),
                 )
             )
 
         if page_id == "stats":
+            guides.append(
+                (
+                    svg.namedview.add_guide(
+                        (l_x + pa, 2 * pa), (0, -1), "Stats guide title"
+                    ).set("id", "guide_puzzle_title"),
+                )
+            )
             guides.append(
                 (
                     svg.namedview.add_guide(
@@ -188,6 +198,7 @@ def setup(self, so):
             page.delete()
 
     manage_layers(self, layers)
+
     return layers, pages, guides, paper
 
 

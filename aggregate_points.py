@@ -49,14 +49,20 @@ class AggregatePointsExtension(inkex.EffectExtension):
             coords.append((x, y))
 
         nf = PointsAggregator(coords, aggregation_radius)
-        averaged_points = nf.evaluate_points()
+        averaged_points, neighbords_merged = nf.evaluate_points()
 
         # # create new path with averaged points
         new_path = PathElement()
         new_path.path = Path(averaged_points)
         new_path.set("id", "aggregated_path")
 
-        new_path.set("style", "stroke:#ff0000;fill:none;stroke-width:1pt")
+        if neighbords_merged:
+            # color green  if neighbors merged
+            new_path.set("style", "stroke:#00ff00;fill:none;stroke-width:1pt")
+        else:
+            # color red if neighbors not merged
+            new_path.set("style", "stroke:#ff0000;fill:none;stroke-width:1pt")
+
         self.svg.append(new_path)
 
 

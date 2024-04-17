@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+import inkex
+
 
 class PointsAggregator:
     """
@@ -21,7 +23,7 @@ class PointsAggregator:
 
     def __init__(self, points, radius: int):
         self.points = points
-        self.r = radius
+        self.radius = radius
         self.grid_map = defaultdict(lambda: [])
         for x, y in points:
             key = (x // radius, y // radius)
@@ -39,12 +41,15 @@ class PointsAggregator:
             list: A list of (x, y) coordinates representing the neighbors.
         """
         neighbors = []
-        sx, sy = qx // self.r, qy // self.r
+        sx, sy = qx // self.radius, qy // self.radius
         neighbor_squares = [(sx + i, sy + j) for i in [-1, 0, 1] for j in [-1, 0, 1]]
         for square in neighbor_squares:
             for x, y in self.grid_map[square]:
-                if (x, y) != (qx, qy) and (qx - x) ** 2 + (qy - y) ** 2 <= self.r**2:
+                if (x, y) != (qx, qy) and (qx - x) ** 2 + (
+                    qy - y
+                ) ** 2 <= self.radius**2:
                     neighbors.append((x, y))
+
         return neighbors
 
     def evaluate_points(self):
@@ -55,13 +60,28 @@ class PointsAggregator:
             list: A list of (x, y) coordinates representing the averaged points.
         """
         averaged_points = []
-        for point in self.points:
+        neighbors_merged = False
+        duplicates_merged = False
+        for i in range(len(self.points)):
+            current_point = self.points[i]
+            next_point = self.points[i + 1] if i + 1 < len(self.points) else None
+            point = current_point
+            if next_point and current_point == next_point:
+                duplicates_merged = True
+                continue
             neighbors = self.query(*point)
             if neighbors:
                 # Compute the average coordinates of the point and its neighbors
+                neighbors_merged = True
                 avg_x = (point[0] + sum(n[0] for n in neighbors)) / (len(neighbors) + 1)
                 avg_y = (point[1] + sum(n[1] for n in neighbors)) / (len(neighbors) + 1)
                 averaged_points.append((avg_x, avg_y))
             else:
                 averaged_points.append(point)
-        return averaged_points
+
+        # Original number of points to the new number of points
+        inkex.debug(
+            f"Original number of points: {len(self.points)}, New number of points: {len(averaged_points)}, Neighbors merged: {neighbors_merged}, Duplicates merged: {duplicates_merged}"
+        )
+
+        return averaged_points, (neighbors_merged or duplicates_merged)

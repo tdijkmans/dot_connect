@@ -68,7 +68,10 @@ class CentroidPlotter:
         return "#{:02x}{:02x}{:02x}".format(*inkex.Color(rgb_color).to_rgb())
 
     def ensure_layers_exist(self, centroids_layer, solution_layer):
-        for layer in [centroids_layer, solution_layer]:
+        for layer in [
+            solution_layer,
+            centroids_layer,
+        ]:
             element = self.svg.getElementById(layer)
             if element is None:
                 new_layer = self.svg.add(Layer())
@@ -149,13 +152,23 @@ class CentroidPlotter:
         plane.style["stroke"] = None
         centroid.style["stroke"] = "#000000"
         centroid.style["stroke-width"] = "0.5"
-        if not inside:
-            # COLORS: red, green, blue, orange, purple
-            bright_colors = ["#ff0000", "#00ff00", "#0000ff", "#ffa500", "#800080"]
-            random_color = random.choice(bright_colors)
-            centroid.style["stroke"] = random_color
-            plane.style["stroke"] = random_color
-            plane.style["stroke-width"] = "2"
+        bright_colors = [
+            "#FF0000",
+            "#FFA500",
+            "#FFFF00",
+            "#00FF00",
+            "#0000FF",
+            "#4B0082",
+            "#9400D3",
+            "#FF1493",
+            "#00FFFF",
+            "#FF00FF",
+        ]
+
+        random_color = random.choice(bright_colors)
+        centroid.style["stroke"] = random_color
+        plane.style["stroke"] = random_color
+        plane.style["stroke-width"] = "2"
 
         centroid.style["fill"] = "#ffffff"
         plane.style["fill"] = "#808080"

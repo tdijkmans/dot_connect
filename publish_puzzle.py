@@ -13,9 +13,10 @@ class PublishPuzzleExtension(inkex.EffectExtension):
         solution_layer.set("display", "none")
 
         # Get all circle elements
-        circle_elements = self.svg.xpath("//svg:circle", namespaces=NSS)
+        xpath = "//svg:circle[@style and contains(@style, 'fill: #000000')]"
+        circle_elements = self.svg.xpath(xpath, namespaces=NSS)
         for circle in circle_elements:
-            circle.style["stroke"] = "none"
+            circle.style["stroke"] = "black"
 
 
 if __name__ == "__main__":

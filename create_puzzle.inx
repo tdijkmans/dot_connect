@@ -20,6 +20,9 @@
             <param name="plot_footer" type="bool" gui-text="Add footer"
                 gui-description="If checked, the copyright will be added to the output.">
                 true</param>
+            <param name="puzzle_level" type='int' min='1' max='5' gui-text='Puzzle level'
+                gui-description='Level of the puzzle. The higher the level, the more brains are plotted.'>
+                3</param>
             <separator />
 
             <label appearance="header">Dot plot</label>

@@ -16,6 +16,13 @@ def add_arguments(pars):
     pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
 
     pars.add_argument(
+        "--puzzle_level",
+        type=int,
+        help="Level of the puzzle",
+        default=3,
+    )
+
+    pars.add_argument(
         "--plot_centroids",
         type=Boolean,
         help="Plot centroids of filled elements",
