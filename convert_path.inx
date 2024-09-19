@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-  <name>05 Convert path</name>
+  <name>05 Find Eularian</name>
   <id>org.inkscape.convert_path</id>
   <page name="Help" gui-text="Help">
     <label xml:space="preserve">
