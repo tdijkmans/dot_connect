@@ -7,6 +7,9 @@ from inkex import Vector2d
 from inkex.elements import Group
 from inkex import debug
 from inkex.transforms import ImmutableVector2d
+import json
+from collections import defaultdict
+import math
 
 class ConvertPathExtension(inkex.EffectExtension):
     """Find Eularian to separate line segments"""
@@ -21,61 +24,125 @@ class ConvertPathExtension(inkex.EffectExtension):
         # Create a new group to hold the line elements
         lines_group = self.svg.add(Group())
         lines_group.set("id", "lines_group")
+        lines_group.set("style", "stroke:#000000;fill:none;stroke-width:1pt")
 
-
-
-        # Get the target paths from the selection or fallback to an element with id 'source_path'
+        # Get the target paths from the selection
         target_paths:list[PathElement] = list(self.svg.selection.filter(PathElement))
-        if not target_paths:
-            # Try to get 'source_path' by ID if nothing is selected
-            target_path = self.svg.getElementById("source_path")
-            if target_path:
-                target_paths.append(target_path)
-            else:
-                # Try to get the first path element in the document if 'source_path' is not found
-                target_paths = self.document.xpath("//svg:path", namespaces=inkex.NSS)
-        
         if not target_paths:
             raise AbortExtension(_("Please select at least one path object."))
         
         # Process each path element
-        for target_path in target_paths:
-            self.convert_path_to_lines(target_path, lines_group, graph, line_segments)
+        streets = self.convert_path_to_lines(target_paths[0], lines_group, graph, line_segments)
 
-        # Add edges to make the graph Eulerian if needed
-        self.make_path_eulerian_with_revisits(graph)
+        # Function to calculate Euclidean distance
 
-        # Find the Eulerian circuit
-        eulerian_circuit = self.find_eulerian_circuit_with_revisits(graph)
+        def calc_euclidean_distance(x1, y1, x2, y2):
+            return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
-         # Create the path data string for the Eulerian path
-        path_data = self.create_path_data(eulerian_circuit)
+        # Create a graph as an adjacency list
+        graph = defaultdict(list)
 
-         # Add the Eulerian path as a new path element
-        eulerian_path = PathElement()
-        eulerian_path.set_id('eulerian_path')
-        eulerian_path.set('d', path_data)
-        eulerian_path.style = "stroke:#FF0000;fill:none;stroke-width:2pt"
-        self.svg.add(eulerian_path)
-
-        # Traverse the Eulerian circuit and add traversal order to line elements
-        for step, (u, v) in enumerate(eulerian_circuit):
-            for idx, (start, end, line) in enumerate(line_segments):
-                if (u, v) == (start, end) or (v, u) == (start, end):
-                    # Set the ID to represent the traversal step
-                    line.set('id', f'traverse-step-{idx + 1}')
-                    break
+        for coordinate in streets:
+            x1, y1, x2, y2 = coordinate['x1'], coordinate['y1'], coordinate['x2'], coordinate['y2']
+            distance = calc_euclidean_distance(x1, y1, x2, y2)
+            
+            # Add edges to the graph (both directions for undirected graph)
+            graph[(x1, y1)].append(((x2, y2), distance))
+            graph[(x2, y2)].append(((x1, y1), distance))
     
+        # Convert the graph to a dictionary with string keys for JSON serialization
+        graph_serializable = {str(key): value for key, value in graph.items()}
+
+        # Write the graph to a JSON file
+        with open("ser_graph.json", "w") as f:
+           json.dump(graph_serializable, f, indent=4)
+
+        # Find Eulerian path or near-optimal route
+        eulerian_path = self.find_eulerian_path(graph)
+        debug(f"Eulerian path: {eulerian_path}")
+        with open("eulerian_path.json", "w") as f:
+            json.dump(eulerian_path, f, indent=4)
+        self.draw_path_or_route(eulerian_path, "eulerian_path_group")
+       
+
     
+    def draw_path_or_route(self, path, group_id):
+        """Draw the Eulerian path or near-optimal route on the SVG"""
+        # Create a new group to hold the path or route elements
+        path_group = self.svg.add(Group())
+        path_group.set("id", group_id)
+        path_group.set("style", "stroke:#FF0000;fill:none;stroke-width:1pt")
+
+        # Draw the path or route
+        for i in range(len(path) - 1):
+            start = Vector2d(*path[i])
+            end = Vector2d(*path[i + 1])
+            line = Line.new(start, end, id=f"{group_id}_line_{i + 1}")
+            path_group.add(line)
+
+    def find_eulerian_path(self, graph):
+        """Find an Eulerian path in the graph"""
+        # Count the degrees of each vertex
+        degree_count = defaultdict(int)
+        for node, neighbors in graph.items():
+            degree_count[node] += len(neighbors)
+            for neighbor, _ in neighbors:
+                degree_count[neighbor] += 1
+
+        # Find the start node for the Eulerian path
+        start_node = None
+        odd_degree_nodes = [node for node, degree in degree_count.items() if degree % 2 != 0]
+        if len(odd_degree_nodes) == 0:
+            # Eulerian circuit
+            start_node = next(iter(graph))
+        elif len(odd_degree_nodes) == 2:
+            # Eulerian path
+            start_node = odd_degree_nodes[0]
+        else:
+            # No Eulerian path
+            return None
+
+        # Define the function to find the Eulerian path using Hierholzer's algorithm
+        def find_path(start_node):
+            stack = [start_node]
+            path = []
+            while stack:
+                node = stack[-1]
+                if graph[node]:
+                    next_node, _ = graph[node].pop()
+                    stack.append(next_node)
+                    graph[next_node].remove((node, _))
+                else:
+                    path.append(stack.pop())
+            return path
+
+        # Call the `find_path` function to generate and return the Eulerian path
+        return find_path(start_node)
+
+
+    def find_near_optimal_route(self, graph):
+        """Find a near-optimal route that visits each edge at least once"""
+        # Use a heuristic to find a near-optimal route
+        visited_edges = set()
+        route = []
+
+        def dfs(node):
+            for neighbor, _ in graph[node]:
+                edge = frozenset([node, neighbor])
+                if edge not in visited_edges:
+                    visited_edges.add(edge)
+                    dfs(neighbor)
+            route.append(node)
+
+        start_node = next(iter(graph))
+        dfs(start_node)
+        return route[::-1]
 
     
     def convert_path_to_lines(self, path:PathElement, lines_group:Group, graph:dict, line_segments:list):
         """Convert a path element to a group of line elements"""
-        # Get the path data
-        path_data = path.path.to_non_shorthand()
-        
-        # Split the path into segments
-        segments = path_data.break_apart()
+        # Get the path data from the path element and break it apart
+        segments = path.path.to_non_shorthand().break_apart()
 
         # Set to keep track of unique segments (undirected edges)
         unique_segments = set()
@@ -116,9 +183,9 @@ class ConvertPathExtension(inkex.EffectExtension):
                 graph[end].append(start)
                 
                 # Create the Line element using the new method
-                line = Line.new(start, end)
-                line.style = "stroke:#000000;fill:none;stroke-width:1pt"
-                lines_group.add(line)
+                current_id = len(line_segments) + 1
+                line = Line.new(start, end,id=f"line_{current_id}")
+                lines_group.add(line)                
 
                 # Store the line segment and associated line element
                 line_segments.append((start, end, line))
@@ -126,58 +193,20 @@ class ConvertPathExtension(inkex.EffectExtension):
                 # Move the start point to the current end point for the next line
                 start = end
 
-    def create_path_data(self, eulerian_circuit:list[tuple[Vector2d, Vector2d]]):
-        """Create the path data string for the Eulerian path"""
-        if not eulerian_circuit:
-            return ""
+        # JUST SOME DEBUGGING CODE TO PRINT THE GRAPH
 
-        path_data = []
-        start_point = eulerian_circuit[0][0]
-        path_data.append(f"M {start_point[0]} {start_point[1]}")
+        # Write all line segments to a JSON file, in graph format
+        formatted_line_segments = [{"x1": start.x,"y1": start.y,"x2": end.x,"y2": end.y} for start, end, _ in line_segments]
+        with open("line_segments.json", "w") as f:
+            json.dump(formatted_line_segments, f, indent=4)
         
-        for u, v in eulerian_circuit:
-            path_data.append(f"L {v[0]} {v[1]}")
-        
-        return " ".join(path_data)
-    
-    def make_path_eulerian_with_revisits(self, graph:dict):
-        """Identify where to revisit edges to make the graph Eulerian without adding new edges."""
-        # Find odd degree vertices
-        odd_degree_nodes = [node for node, neighbors in graph.items() if len(neighbors) % 2 != 0]
+        # write graph to  json file
+        formatted_graph = {str(k): [str(v) for v in values] for k, values in graph.items()}
+        # Write to JSON file
+        with open("graph.json", "w") as f:
+            json.dump(formatted_graph, f, indent=4)
 
-        # Find minimum cost pairing of odd degree vertices
-        while len(odd_degree_nodes) > 1:
-            node1 = odd_degree_nodes.pop()
-            # Calculate distances to other odd-degree nodes
-            distances = [(self.euclidean_distance(node1, node2), node2) for node2 in odd_degree_nodes]
-            distances.sort(key=lambda x: x[0])  # Sort by distance
-            _, node2 = distances[0]
-            odd_degree_nodes.remove(node2)
-
-            # Simulate edge revisit by marking the path for additional traversal
-            # We won't modify the graph itself; we simply mark this pair for revisiting
-            # Optionally, we can store this information for use in the circuit construction
-            debug(f"Revisit edge between {node1} and {node2}")
-
-    def find_eulerian_circuit_with_revisits(self, graph:dict):
-            """Find Eulerian circuit with U-turns if necessary using Hierholzer's algorithm."""
-        # Find all edges to traverse
-            all_edges = {node: set(neighbors) for node, neighbors in graph.items()}
-            start_node = next(iter(graph))
-            circuit = []
-            stack = [start_node]
-
-            while stack:
-                u = stack[-1]
-                if all_edges[u]:
-                    v = all_edges[u].pop()
-                    all_edges[v].remove(u)  # Remove the edge in both directions
-                    stack.append(v)
-                else:
-                    circuit.append(stack.pop())
-
-            # Convert circuit to list of edges
-            return [(circuit[i], circuit[i + 1]) for i in range(len(circuit) - 1)]
+        return formatted_line_segments
 
     def euclidean_distance(self, point1:Vector2d, point2:Vector2d):
         """Calculate the Euclidean distance between two points"""
