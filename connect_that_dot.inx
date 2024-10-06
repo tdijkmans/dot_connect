@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Connect That Dot</name>
+  <id>org.inkscape.connect_that_dot</id>
+  <param name="tab" type="notebook">
+    <page name="Options" gui-text="Options">
+
+      <param name="stroke_width" type="int" min="0" max="1000" gui-text="Stroke width" default="1">
+        <tooltip>Width of the line.</tooltip>
+      </param>
+
+
+      <param name="line_length" type="int" min="0" max="1000" gui-text="Line length" default="5">
+        <tooltip>Length of the line.</tooltip>
+      </param>
+
+      <param name="cap_style" type="optiongroup" gui-text="Cap Style" appearance="combo"
+        default="round">
+        <tooltip>Style of the cap at the end of the line.</tooltip>
+        <option value="round" gui-text="Round">Round</option>
+        <option value="square" gui-text="Square">Square</option>
+        <option value="butt" gui-text="Butt">Butt</option>
+      </param>
+
+
+    </page>
+    <page name="Help" gui-text="Help">
+      <label xml:space="preserve">
+        This extension breaks a selected path into individual line segments and adds caps (end decorations) to each segment. You can customize the stroke width, line length for the caps, and the cap style (round, square, butt).
+      </label>
+    </page>
+
+  </param>
+  <effect>
+    <effects-menu>
+      <submenu name="Create puzzle" />
+    </effects-menu>
+  </effect>
+  <script>
+    <command location="inx" interpreter="python">connect_that_dot.py</command>
+  </script>
+</inkscape-extension>
