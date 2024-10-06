@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Break Up Lines</name>
+  <id>org.inkscape.break_up_lines</id>
+  <param name="tab" type="notebook">
+    <page name="Options" gui-text="Options">
+
+      <param name="line_width" type="int" min="0" max="1000" gui-text="Line Width" default="1">
+        <tooltip>Width of the line.</tooltip>
+      </param>
+
+      <param name="save_json" type="bool" gui-text="Save JSON" default="false"
+        gui-description="If checked, the lines will be saved as JSON.">
+        false
+      </param>
+
+
+      <separator />
+
+    </page>
+    <page name="Help" gui-text="Help">
+      <label xml:space="preserve">
+        This extension breaks up a single path into multiple lines. The lines are broken up at the nodes of the path.        
+      </label>
+    </page>
+  </param>
+  <effect>
+    <effects-menu>
+      <submenu name="Create puzzle" />
+    </effects-menu>
+  </effect>
+  <script>
+    <command location="inx" interpreter="python">break_up_lines.py</command>
+  </script>
+</inkscape-extension>
