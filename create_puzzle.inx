@@ -68,6 +68,10 @@
                 <option value="US Letter" gui-text="US Letter">US Letter</option>
             </param>
 
+            <param name="break_up" type="bool" gui-text="Plot inidividual line segments"
+                gui-description="If checked, the lines connecting the dots will be plotted.">
+                true</param>
+
 
         </page>
 
