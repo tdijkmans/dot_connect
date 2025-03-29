@@ -33,10 +33,10 @@
   </param>
   <effect>
     <effects-menu>
-      <submenu name="Create puzzle" />
+      <submenu name="Create Connect-that-dot" />
     </effects-menu>
   </effect>
   <script>
-    <command location="inx" interpreter="python">connect_that_dot.py</command>
+    <command location="inx" interpreter="python">Connect-that-dot/connect_that_dot.py</command>
   </script>
 </inkscape-extension>

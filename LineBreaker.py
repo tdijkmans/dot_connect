@@ -67,6 +67,8 @@ class LineBreaker:
 
         segments = self.path.path.to_non_shorthand().break_apart()
 
+        coordinates = self.path.get_path()
+
         for coordinates in segments:
             if len(coordinates) < 2:
                 continue
@@ -87,8 +89,8 @@ class LineBreaker:
                     continue
                 unique_segments.add(edge)
 
-                graph.setdefault(start, []).append(end)
-                graph.setdefault(end, []).append(start)
+                graph.setdefault(rounded_start, []).append(rounded_end)
+                graph.setdefault(rounded_end, []).append(rounded_start)
 
                 current_id = len(line_segments) + 1
                 formatted_id = str(current_id).zfill(3)
