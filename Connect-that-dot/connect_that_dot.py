@@ -4,6 +4,7 @@ from inkex.elements import PathElement, Line, Group, Defs
 from inkex import Vector2d
 import json
 import math
+from inkex.utils import debug
 
 class ConnectThatDotExtension(inkex.EffectExtension):
     """Break up a path into line segments and add caps at the start and end."""
@@ -58,19 +59,23 @@ class ConnectThatDotExtension(inkex.EffectExtension):
         # Extract segments from path and break apart shorthand notation
         segments = path.path.to_non_shorthand().break_apart()
 
+        coordinates = path.get_path()
+
         for coordinates in segments:
             if len(coordinates) < 2:
                 continue
 
+            # Ensure coordinates are valid
             start = Vector2d(coordinates[0].x, coordinates[0].y)
             for i in range(1, len(coordinates)):
                 end = Vector2d(coordinates[i].x, coordinates[i].y)
 
+                # Convert Vector2d objects to tuples before using as dictionary keys
+                start_tuple = (round(start.x), round(start.y))
+                end_tuple = (round(end.x), round(end.y))
+
                 # Create undirected edge as frozenset of rounded coordinates
-                edge = frozenset([
-                    (round(start.x), round(start.y)),
-                    (round(end.x), round(end.y))
-                ])
+                edge = frozenset([start_tuple, end_tuple])
 
                 # Skip duplicates
                 if edge in unique_segments:
@@ -79,9 +84,7 @@ class ConnectThatDotExtension(inkex.EffectExtension):
                 unique_segments.add(edge)
 
                 # Build the graph representation
-                graph.setdefault(start, []).append(end)
-                graph.setdefault(end, []).append(start)
-
+                graph.setdefault(start_tuple, []).append(end_tuple)
 
                 # Create a line element and add to the group
                 line_segments.append({
@@ -100,7 +103,7 @@ class ConnectThatDotExtension(inkex.EffectExtension):
     def cap_line_segments(self, line_segments: list, line_length: int, cap_style: str, stroke_width: float):
         """Plot line caps at start and end of each segment."""
         cap_group = self.svg.get_current_layer().add(
-           Group(id="cap_group", style=f"stroke:#0000FF;fill:none;stroke-width:{stroke_width}, stroke-linecap:{cap_style}")
+           Group(id="cap_group", style=f"stroke:#0000FF;fill:none;stroke-width:{stroke_width}; stroke-linecap:{cap_style}")
         )
 
         for point in line_segments:

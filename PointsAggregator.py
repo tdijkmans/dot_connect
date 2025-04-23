@@ -79,9 +79,4 @@ class PointsAggregator:
             else:
                 averaged_points.append(point)
 
-        # Original number of points to the new number of points
-        inkex.debug(
-            f"Original number of points: {len(self.points)}, New number of points: {len(averaged_points)}, Neighbors merged: {neighbors_merged}, Duplicates merged: {duplicates_merged}"
-        )
-
         return averaged_points, (neighbors_merged or duplicates_merged)

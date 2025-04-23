@@ -1,7 +1,6 @@
 # Import required modules
 import json
 import math
-import random
 
 import inkex
 from inkex import (
@@ -25,6 +24,7 @@ from inkex.paths import Path
 from CentroidPlotter import CentroidPlotter
 from document_setup import setup
 from extension_args import add_arguments
+from LineBreaker import LineBreaker
 
 
 # Create a class named NumberDots that inherits from inkex.EffectExtension
@@ -73,6 +73,12 @@ class CreatePuzzle(EffectExtension):
         # Create a mapping of letter IDs, numbers, and coordinates
         # Also check for collisions and calculate distances
         dot_connections = self.create_mapping(processed_path)
+
+        # Save the dot connections to a file
+        with open("dot_connections.json", "w") as f:
+            json.dump(dot_connections, f)
+
+
         collisions, sorted_dots, all_distances = self.check_density(
             dot_connections, so.minimal_distance
         )
@@ -80,6 +86,20 @@ class CreatePuzzle(EffectExtension):
             sorted_dots
         )
         planes = self.count_planes("centroids_layer", so.plane_fill)
+
+        # Add style to dots layer
+        dots_layer = self.svg.getElementById("dots_layer")
+        dots_layer.style = Style(
+            {
+                "font-family": "Consolas",
+                "letter-spacing": "1px",
+                "font-weight": "normal",
+                "font-size": "6pt",
+                "text-anchor": "middle",
+                "dominant-baseline": "middle",
+                "fill":"#000000",
+            }
+        )
 
         # Plot the Puzzle Dots and Centroids
         if so.plot_dots:
@@ -98,6 +118,7 @@ class CreatePuzzle(EffectExtension):
                 so.fraction,
                 so.plane_fill,
             )
+        
 
         # Plot the Instructions
         if so.plot_sequence:
@@ -138,6 +159,28 @@ class CreatePuzzle(EffectExtension):
             so.subtitle,
         )
 
+        if so.break_up:
+            self.plot_lines(dot_connections)
+
+    
+    def plot_lines(self, dot_connections):
+           
+        # Create a new group to hold the line elements
+        lines_group = self.svg.get_current_layer().add(
+            Group(id="lines_group", style=f"stroke:#000000;fill:none;stroke-width:1.0;")
+        )
+
+
+        # Get selected paths
+        target_paths = list(self.svg.selection.filter(PathElement))
+        if not target_paths:
+            raise AbortExtension("Please select at least one path object.")
+        
+        for path in target_paths:
+            line_breaker = LineBreaker(path, lines_group, dot_connections)
+            line_segments = line_breaker.plot_unique_lines(dot_connections)        
+            
+
     def plot_caption(self, caption):
         layer = self.svg.getElementById("instructions_layer")
         bx, by = self.svg.getElementById("guide_bottom").position
@@ -146,7 +189,6 @@ class CreatePuzzle(EffectExtension):
         caption_element.style = Style(
             {
                 "font-family": "Garamond",
-                "fill-opacity": "1.0",
                 "fill": "#000000",
                 "font-size": "16pt",
                 "font-style": "italic",
@@ -437,8 +479,12 @@ class CreatePuzzle(EffectExtension):
         if count > 2:
             color = "red"
 
+        if color == "none":
+            return
+        
+
         left_dot, right_dot = connection.split()
-        markStyle = Style({"stroke": color, "stroke-width": "2pt"})
+        markStyle = Style({"stroke": color, "stroke-width": "5pt"})
 
         self.svg.getElementById(f"black_dot_{left_dot}").style = markStyle
         self.svg.getElementById(f"black_dot_{right_dot}").style = markStyle
@@ -707,11 +753,8 @@ class CreatePuzzle(EffectExtension):
             )
             # make the text center horitzontally
             text_element_with_label.text = f"{step['letter_label']}"
-            text_element_with_label.set("text-anchor", "middle")
-            text_element_with_label.set("dominant-baseline", "middle")
             text_element_with_label.set("id", f"text_label_{step['letter_label']}")
-            text_element_with_label.style = self.fontConsolas
-            text_element_with_label.set("letter-spacing", "1px")
+
             #  make red when collision
             if collision_exists:
                 text_element_with_label.style["fill"] = "#ff0000"
@@ -721,7 +764,6 @@ class CreatePuzzle(EffectExtension):
                 x_center,
                 y_center,
                 0.7,
-                fill="#000000",
                 id=f"black_dot_{step['letter_label']}",
             )
 
@@ -730,14 +772,9 @@ class CreatePuzzle(EffectExtension):
             current_dot_group.append(black_circle)
             current_dot_group.append(text_element_with_label)
 
-    def createCircle(self, x: int, y: int, radius: int, fill="#ffffff", id=""):
+    def createCircle(self, x: int, y: int, radius: int,id=""):
         """Create a circle element"""
         circle = Circle(cx=str(x), cy=str(y), r=str(radius))
-        circle.style = Style(
-            {
-                "fill": fill,
-            }
-        )
         circle.set("id", id)
         return circle
 
@@ -760,7 +797,10 @@ class CreatePuzzle(EffectExtension):
             y,
             width=width,
         )
+
+        
         self.svg.getElementById("instructions_layer").append(element)
+
 
     def create_mapping(self, elements: list):
         """Create a mapping of letter IDs, numbers, and coordinates"""
@@ -811,18 +851,6 @@ class CreatePuzzle(EffectExtension):
         current_folder = self.svg_path()
         with open(f"{current_folder}/{filename}", "w") as f:
             json.dump(combined_mapping, f)
-
-    # Define a method to set the style of dots based on their position
-    def set_dot_style(self, circle, dot_number: int):
-        circle.style = Style(
-            {
-                "stroke": "#ffffff",
-                "stroke-width": "0.1pt",
-                "fill": "#ffffff",
-            }
-        )
-        circle.set("id", f"dot_{dot_number}")
-        return circle
 
     # Define a method to add text labels
     def add_text(

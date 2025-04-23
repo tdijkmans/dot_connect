@@ -140,3 +140,10 @@ def add_arguments(pars):
         help="Size of the paper",
         default="A4",
     )
+
+    pars.add_argument(
+        "--break_up",
+        type=Boolean,
+        help="Plot lines",
+        default=False,
+    )
